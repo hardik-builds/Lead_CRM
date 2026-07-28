@@ -22,6 +22,7 @@ export default function Home() {
   // Registered Email State
   const [registeredEmailInput, setRegisteredEmailInput] = useState('');
   const [emailSavedStatus, setEmailSavedStatus] = useState('');
+  const [scanning, setScanning] = useState(false);
 
   // Modals & Drawers
   const [leadModalOpen, setLeadModalOpen] = useState(false);
@@ -168,6 +169,30 @@ export default function Home() {
     else if (scoreSort === 'score_asc') list.sort((a, b) => (a.score_of_client || 0) - (b.score_of_client || 0));
     else if (scoreSort === 'followup') list.sort((a, b) => new Date(a.follow_up_dates || '9999-12-31') - new Date(b.follow_up_dates || '9999-12-31'));
     return list;
+  };
+
+  // Manual Scan Trigger Handler
+  const handleManualScan = async () => {
+    setScanning(true);
+    try {
+      const res = await fetch('/api/notifications/check', {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success) {
+        alert(`⚡ Manual Scan Complete!\nScanned 2-day and 1-day reminders for registered emails.`);
+        fetchNotifications();
+      } else {
+        alert('Scan error: ' + (data.error || 'Failed'));
+      }
+    } catch (err) {
+      alert('Scan failed: ' + err.message);
+    } finally {
+      setScanning(false);
+    }
   };
 
   // Universal Delete All Leads Handler (with Confirmation)
@@ -380,6 +405,12 @@ export default function Home() {
           </div>
 
           <div className="topbar-actions">
+            {/* Manual Scan Alerts Button */}
+            <button className="btn btn-outline" onClick={handleManualScan} disabled={scanning} title="Run instant manual scan for 2-day & 1-day alerts">
+              <i className={scanning ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-bell-concierge"}></i>
+              <span>{scanning ? 'Scanning...' : 'Scan Alerts Now'}</span>
+            </button>
+
             <button className="btn btn-outline" onClick={() => setImportModalOpen(true)}>
               <i className="fa-solid fa-file-excel"></i>
               <span>Import Excel</span>
@@ -421,10 +452,10 @@ export default function Home() {
         {/* Registered Email Alert Banner */}
         <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', padding: '14px 20px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <i className="fa-solid fa-robot" style={{ color: '#4f46e5', fontSize: '22px' }}></i>
+            <i className="fa-solid fa-bell-concierge" style={{ color: '#4f46e5', fontSize: '22px' }}></i>
             <div>
-              <strong style={{ color: '#1e1b4b', fontSize: '14px' }}>Autonomous Background Email Scanner Active (Auto-Scans Every 30 Mins)</strong>
-              <p style={{ color: '#4338ca', fontSize: '12px', margin: 0 }}>Emails are delivered 100% automatically to: <strong>{loggedInUserEmail}</strong> (2-Day & 1-Day Prior Alerts)</p>
+              <strong style={{ color: '#1e1b4b', fontSize: '14px' }}>Dual Alert Engine Active (Both Automatic Background Cron & Manual Scan Button Available)</strong>
+              <p style={{ color: '#4338ca', fontSize: '12px', margin: 0 }}>Emails are sent automatically every 30 mins, or manually anytime by clicking <strong>"Scan Alerts Now"</strong>.</p>
             </div>
           </div>
           <button className="btn btn-outline" style={{ background: '#fff', fontSize: '12px' }} onClick={() => setSettingsModalOpen(true)}>
@@ -448,7 +479,7 @@ export default function Home() {
             <div className="kpi-data">
               <span className="kpi-title">Follow-ups Due</span>
               <h3>{kpis.followupsCount}</h3>
-              <span className="kpi-sub">Auto 2-Day & 1-Day Alerts</span>
+              <span className="kpi-sub">Auto & Manual Alerts</span>
             </div>
           </div>
 
