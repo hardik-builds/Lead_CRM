@@ -55,7 +55,12 @@ export default async function handler(req, res) {
         filtered = allLeads.filter(l => {
           const st = (l.status || '').toLowerCase();
           const nst = (l.new_status || '').toLowerCase();
-          if (st.includes('nurture') || nst.includes('nurture')) return true;
+          const notes = (l.notes || '').toLowerCase();
+
+          // Auto classify "Not Interested" leads directly into Nurture List
+          if (st.includes('nurture') || nst.includes('nurture') || st.includes('not interested') || nst.includes('not interested') || notes.includes('not interested')) {
+            return true;
+          }
           if (l.follow_up_dates) {
             const diffDays = Math.ceil((new Date(l.follow_up_dates) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
             return diffDays >= 7 && diffDays <= threshold;
@@ -75,9 +80,17 @@ export default async function handler(req, res) {
       const followupsCount = await Lead.countDocuments({
         $or: [{ follow_up_dates: { $ne: '' } }, { reachout_date: { $ne: '' } }]
       });
+      
+      // Nurture Count including "Not Interested" leads
       const nurtureCount = await Lead.countDocuments({
-        $or: [{ status: /nurture/i }, { new_status: /nurture/i }]
+        $or: [
+          { status: /nurture/i },
+          { new_status: /nurture/i },
+          { status: /not interested/i },
+          { new_status: /not interested/i }
+        ]
       });
+
       const meetingsCount = await Lead.countDocuments({
         $or: [{ status: /meeting/i }, { next_action: /meeting/i }]
       });

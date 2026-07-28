@@ -22,15 +22,23 @@ const leadSchema = new mongoose.Schema({
   created_at: { type: Date, default: Date.now }
 }, { timestamps: true });
 
-// Auto calculate score out of 10 if missing
+// Auto calculate score out of 10 and handle "Not Interested" Nurture list auto-classification
 leadSchema.pre('save', function(next) {
+  const st = (this.status || '').toLowerCase();
+  const nst = (this.new_status || '').toLowerCase();
+
+  // If status is "Not Interested", automatically classify into Nurture List
+  if (st.includes('not interested') || nst.includes('not interested')) {
+    this.new_status = 'Nurture (Not Interested)';
+  }
+
   if (this.score_of_client === undefined || this.score_of_client === null) {
     let computed = 5; // base score out of 10
-    const st = (this.status || '').toLowerCase();
 
     if (st.includes('meeting')) computed += 3;
     else if (st.includes('contacted') || st.includes('qualified')) computed += 1;
     else if (st.includes('won')) computed += 4;
+    else if (st.includes('not interested')) computed = 3;
     else if (st.includes('lost')) computed = 1;
 
     if (this.email) computed += 1;
@@ -38,7 +46,6 @@ leadSchema.pre('save', function(next) {
 
     this.score_of_client = Math.min(Math.max(computed, 1), 10);
   } else if (this.score_of_client > 10) {
-    // If entered out of 100, normalize to scale of 10
     this.score_of_client = Math.min(Math.max(Math.round(this.score_of_client / 10), 1), 10);
   }
   next();
