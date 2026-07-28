@@ -1,8 +1,50 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 
+// Helper: Normalize DD/MM/YYYY or YYYY-MM-DD to ISO YYYY-MM-DD
+function normalizeToISO(str) {
+  if (!str) return null;
+  str = String(str).trim();
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+  return null;
+}
+
+// Conditional Formatting Helper
+function getFollowUpStatus(dateStr) {
+  if (!dateStr) return null;
+  const iso = normalizeToISO(dateStr);
+  if (!iso) return null;
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  if (iso === todayStr) {
+    return { type: 'today', label: 'DUE TODAY', icon: 'fa-solid fa-clock-rotate-left', rowClass: 'row-due-today', pillClass: 'pill-today' };
+  } else if (iso < todayStr) {
+    return { type: 'overdue', label: 'OVERDUE', icon: 'fa-solid fa-triangle-exclamation', rowClass: 'row-overdue', pillClass: 'pill-overdue' };
+  } else {
+    return { type: 'upcoming', label: iso, icon: 'fa-solid fa-calendar-day', rowClass: '', pillClass: 'pill-upcoming' };
+  }
+}
+
 export default function Home() {
-  // Authentication & Current User State
+  // Authentication State
   const [authenticated, setAuthenticated] = useState(false);
   const [loggedInUserEmail, setLoggedInUserEmail] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -12,13 +54,14 @@ export default function Home() {
   const [leads, setLeads] = useState([]);
   const [kpis, setKpis] = useState({ totalLeads: 0, followupsCount: 0, nurtureCount: 0, meetingsCount: 0 });
   const [loading, setLoading] = useState(true);
-  const [isCached, setIsCached] = useState(false);
   const [search, setSearch] = useState('');
+  const [filterDate, setFilterDate] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [scoreSort, setScoreSort] = useState('default');
+  const [sortOption, setSortOption] = useState('date_added_desc');
 
   const [settings, setSettings] = useState({ registeredEmails: [], enableEmailNotifications: true });
   const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Registered Email State
   const [registeredEmailInput, setRegisteredEmailInput] = useState('');
@@ -32,7 +75,16 @@ export default function Home() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
 
-  // Form State (All 18 Fields)
+  // 1-Click Reschedule Modal State
+  const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
+  const [reschedulingLead, setReschedulingLead] = useState(null);
+  const [customRescheduleDate, setCustomRescheduleDate] = useState('');
+
+  // Read Notes Full Popup Modal State
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  const [activeNotesData, setActiveNotesData] = useState({ company: '', text: '', activityLog: [] });
+
+  // Form State
   const [formData, setFormData] = useState({
     company: '', city: '', locations: '', founder: '', linkedin: '',
     contact: '', email: '', pain_point: '', source: 'Direct',
@@ -62,7 +114,7 @@ export default function Home() {
     if (authenticated) {
       fetchLeads();
     }
-  }, [authenticated, currentTab, search, statusFilter]);
+  }, [authenticated, currentTab, search, statusFilter, filterDate]);
 
   // Auth Header Helper
   const getAuthHeaders = () => ({
@@ -136,24 +188,43 @@ export default function Home() {
       const res = await fetch('/api/notifications', { headers: getAuthHeaders() });
       const data = await res.json();
       if (handleAuthError(data)) return;
-      if (data.success) setNotifications(data.notifications || []);
+      if (data.success) {
+        const notifs = data.notifications || [];
+        setNotifications(notifs);
+
+        const lastReadTime = localStorage.getItem('crm_notifications_last_read_time') || 0;
+        const unread = notifs.filter(n => new Date(n.createdAt || n.sentAt || 0).getTime() > parseInt(lastReadTime, 10)).length;
+        setUnreadCount(unread);
+      }
     } catch (err) {
       console.error('Fetch notifications error:', err);
     }
+  };
+
+  // Open Drawer & Mark All Notifications as Read
+  const handleOpenNotificationsDrawer = () => {
+    setDrawerOpen(true);
+    setUnreadCount(0);
+    localStorage.setItem('crm_notifications_last_read_time', Date.now().toString());
+  };
+
+  // Mark All Notifications as Read Button Handler
+  const handleMarkAllAsRead = () => {
+    setUnreadCount(0);
+    localStorage.setItem('crm_notifications_last_read_time', Date.now().toString());
   };
 
   // Fetch Leads
   const fetchLeads = async () => {
     setLoading(true);
     try {
-      const url = `/api/leads?tab=${currentTab}&search=${encodeURIComponent(search)}&status=${encodeURIComponent(statusFilter)}`;
+      const url = `/api/leads?tab=${currentTab}&search=${encodeURIComponent(search)}&status=${encodeURIComponent(statusFilter)}&filterDate=${encodeURIComponent(filterDate)}`;
       const res = await fetch(url, { headers: getAuthHeaders() });
       const data = await res.json();
       if (handleAuthError(data)) return;
 
       if (data.success) {
         setLeads(data.leads || []);
-        setIsCached(!!data.cached);
         if (data.kpis) setKpis(data.kpis);
       }
     } catch (err) {
@@ -163,16 +234,143 @@ export default function Home() {
     }
   };
 
-  // Sorted Leads Calculation
+  // Comprehensive Sorting Engine
   const getSortedLeads = () => {
     let list = [...leads];
-    if (scoreSort === 'score_desc') list.sort((a, b) => (b.score_of_client || 0) - (a.score_of_client || 0));
-    else if (scoreSort === 'score_asc') list.sort((a, b) => (a.score_of_client || 0) - (b.score_of_client || 0));
-    else if (scoreSort === 'followup') list.sort((a, b) => new Date(a.follow_up_dates || '9999-12-31') - new Date(b.follow_up_dates || '9999-12-31'));
+
+    if (sortOption === 'followup_nearest') {
+      list.sort((a, b) => {
+        const isoA = normalizeToISO(a.follow_up_dates);
+        const isoB = normalizeToISO(b.follow_up_dates);
+        if (!isoA) return 1;
+        if (!isoB) return -1;
+        return new Date(isoA) - new Date(isoB);
+      });
+    } else if (sortOption === 'followup_farthest') {
+      list.sort((a, b) => {
+        const isoA = normalizeToISO(a.follow_up_dates);
+        const isoB = normalizeToISO(b.follow_up_dates);
+        if (!isoA) return 1;
+        if (!isoB) return -1;
+        return new Date(isoB) - new Date(isoA);
+      });
+    } else if (sortOption === 'reachout_nearest') {
+      list.sort((a, b) => {
+        const isoA = normalizeToISO(a.reachout_date);
+        const isoB = normalizeToISO(b.reachout_date);
+        if (!isoA) return 1;
+        if (!isoB) return -1;
+        return new Date(isoA) - new Date(isoB);
+      });
+    } else if (sortOption === 'reachout_farthest') {
+      list.sort((a, b) => {
+        const isoA = normalizeToISO(a.reachout_date);
+        const isoB = normalizeToISO(b.reachout_date);
+        if (!isoA) return 1;
+        if (!isoB) return -1;
+        return new Date(isoB) - new Date(isoA);
+      });
+    } else if (sortOption === 'score_desc') {
+      list.sort((a, b) => (b.score_of_client || 0) - (a.score_of_client || 0));
+    } else if (sortOption === 'score_asc') {
+      list.sort((a, b) => (a.score_of_client || 0) - (b.score_of_client || 0));
+    } else if (sortOption === 'date_added_desc') {
+      list.sort((a, b) => new Date(b.date_added || b.createdAt || 0) - new Date(a.date_added || a.createdAt || 0));
+    } else if (sortOption === 'date_added_asc') {
+      list.sort((a, b) => new Date(a.date_added || a.createdAt || 0) - new Date(b.date_added || b.createdAt || 0));
+    }
+
     return list;
   };
 
-  // Manual Scan Trigger Handler (Sends to BOTH Admin and Intern)
+  // FEATURE 1: 1-Click Reschedule Handler (+1 Day, +3 Days, +1 Week, Custom)
+  const openRescheduleModal = (lead) => {
+    setReschedulingLead(lead);
+    setCustomRescheduleDate(lead.follow_up_dates || new Date().toISOString().split('T')[0]);
+    setRescheduleModalOpen(true);
+  };
+
+  const handleApplyReschedule = async (daysToAdd, customTargetDate = null) => {
+    if (!reschedulingLead) return;
+
+    let targetDateISO = '';
+    if (customTargetDate) {
+      targetDateISO = customTargetDate;
+    } else {
+      const baseDate = new Date();
+      baseDate.setDate(baseDate.getDate() + daysToAdd);
+      targetDateISO = baseDate.toISOString().split('T')[0];
+    }
+
+    try {
+      const res = await fetch(`/api/leads/${reschedulingLead._id || reschedulingLead.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          follow_up_dates: targetDateISO
+        })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success) {
+        setRescheduleModalOpen(false);
+        fetchLeads();
+        fetchNotifications();
+      } else {
+        alert('Reschedule error: ' + (data.error || 'Failed'));
+      }
+    } catch (err) {
+      alert('Reschedule failed: ' + err.message);
+    }
+  };
+
+  // FEATURE 2: Export Filtered Leads to Excel / CSV Download
+  const handleExportCSV = () => {
+    const listToExport = getSortedLeads();
+    if (listToExport.length === 0) {
+      alert('No leads available to export.');
+      return;
+    }
+
+    const headers = ['Company', 'City', 'Locations', 'Founder', 'Contact', 'Email', 'Client Score', 'Status', 'New Status', 'Follow up Date', 'Outreach Date', 'Pain Point', 'Notes', 'Date Added', 'Assigned Agent', 'Source'];
+    
+    const csvRows = [headers.join(',')];
+
+    listToExport.forEach(lead => {
+      const row = [
+        `"${(lead.company || '').replace(/"/g, '""')}"`,
+        `"${(lead.city || '').replace(/"/g, '""')}"`,
+        `"${(lead.locations || '').replace(/"/g, '""')}"`,
+        `"${(lead.founder || '').replace(/"/g, '""')}"`,
+        `"${(lead.contact || '').replace(/"/g, '""')}"`,
+        `"${(lead.email || '').replace(/"/g, '""')}"`,
+        lead.score_of_client || 5,
+        `"${(lead.status || '').replace(/"/g, '""')}"`,
+        `"${(lead.new_status || '').replace(/"/g, '""')}"`,
+        `"${(lead.follow_up_dates || '').replace(/"/g, '""')}"`,
+        `"${(lead.reachout_date || '').replace(/"/g, '""')}"`,
+        `"${(lead.pain_point || '').replace(/"/g, '""')}"`,
+        `"${(lead.notes || '').replace(/"/g, '""')}"`,
+        `"${(lead.date_added || '').replace(/"/g, '""')}"`,
+        `"${(lead.assigned_to || '').replace(/"/g, '""')}"`,
+        `"${(lead.source || '').replace(/"/g, '""')}"`
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `LeadPulse_Leads_Export_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Manual Scan Trigger Handler
   const handleManualScan = async () => {
     setScanning(true);
     try {
@@ -184,7 +382,11 @@ export default function Home() {
       if (handleAuthError(data)) return;
 
       if (data.success) {
-        alert(`⚡ Manual Scan Complete!\nScanned 2-day and 1-day reminders.\nEmails sent to BOTH Admin & Intern registered accounts.`);
+        if (data.newAlertsCount > 0) {
+          alert(`Scan Complete: Dispatched ${data.newAlertsCount} email notifications to registered users.`);
+        } else {
+          alert(`Scan Complete: All scheduled reminders are up to date.`);
+        }
         fetchNotifications();
       } else {
         alert('Scan error: ' + (data.error || 'Failed'));
@@ -196,9 +398,9 @@ export default function Home() {
     }
   };
 
-  // Universal Delete All Leads Handler (with Confirmation)
+  // Universal Delete All Leads Handler
   const handleDeleteAllLeads = async () => {
-    if (!confirm('⚠️ CONFIRMATION REQUIRED:\nAre you sure you want to permanently delete ALL leads in your database?\nThis action cannot be undone.')) {
+    if (!confirm('CONFIRMATION: Are you sure you want to permanently delete ALL leads in your database? This action cannot be undone.')) {
       return;
     }
 
@@ -211,7 +413,7 @@ export default function Home() {
       if (handleAuthError(data)) return;
 
       if (data.success) {
-        alert(`Successfully deleted all ${data.deletedCount || 0} leads from database!`);
+        alert(`Successfully deleted all ${data.deletedCount || 0} leads from database.`);
         fetchLeads();
       } else {
         alert('Failed to delete all leads: ' + (data.error || 'Unknown error'));
@@ -219,6 +421,12 @@ export default function Home() {
     } catch (err) {
       alert('Delete error: ' + err.message);
     }
+  };
+
+  // FEATURE 3: Open Full Notes & Activity Log Timeline Modal
+  const openNotesModal = (company, text, activityLog = []) => {
+    setActiveNotesData({ company, text, activityLog });
+    setNotesModalOpen(true);
   };
 
   // Save Lead Handler
@@ -311,7 +519,7 @@ export default function Home() {
       if (handleAuthError(data)) return;
 
       if (data.success) {
-        alert(`Successfully imported ${data.importedCount} leads into your database!`);
+        alert(`Successfully imported ${data.importedCount} leads into your database.`);
         setImportModalOpen(false);
         fetchLeads();
       } else {
@@ -331,7 +539,7 @@ export default function Home() {
   return (
     <div>
       <Head>
-        <title>LeadPulse CRM - iPhone, iPad, PC Responsive</title>
+        <title>LeadPulse CRM - Advanced Sales & Follow-up Intelligence</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
         <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
       </Head>
@@ -375,10 +583,25 @@ export default function Home() {
                 <span className="badge">{kpis.totalLeads}</span>
               </button>
 
+              <button className={`nav-item ${currentTab === 'today' ? 'active' : ''}`} onClick={() => { setCurrentTab('today'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-clock-rotate-left" style={{ color: '#d97706' }}></i>
+                <span style={{ color: '#92400e', fontWeight: 700 }}>Today's Follow-ups</span>
+              </button>
+
+              <button className={`nav-item ${currentTab === 'overdue' ? 'active' : ''}`} onClick={() => { setCurrentTab('overdue'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-triangle-exclamation" style={{ color: '#dc2626' }}></i>
+                <span style={{ color: '#991b1b', fontWeight: 700 }}>Overdue Follow-ups</span>
+              </button>
+
               <button className={`nav-item ${currentTab === 'followups' ? 'active' : ''}`} onClick={() => { setCurrentTab('followups'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-clock-rotate-left"></i>
-                <span>Follow-up Leads</span>
+                <i className="fa-solid fa-calendar-days"></i>
+                <span>All Scheduled Follow-ups</span>
                 <span className="badge" style={{ background: '#fef3c7', color: '#b45309' }}>{kpis.followupsCount}</span>
+              </button>
+
+              <button className={`nav-item ${currentTab === 'reachout' ? 'active' : ''}`} onClick={() => { setCurrentTab('reachout'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-paper-plane"></i>
+                <span>Outreach Pipeline</span>
               </button>
 
               <button className={`nav-item ${currentTab === 'nurture' ? 'active' : ''}`} onClick={() => { setCurrentTab('nurture'); setMobileMenuOpen(false); }}>
@@ -388,14 +611,14 @@ export default function Home() {
               </button>
 
               <button className={`nav-item ${currentTab === 'meetings' ? 'active' : ''}`} onClick={() => { setCurrentTab('meetings'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-calendar-check"></i>
+                <i className="fa-solid fa-handshake"></i>
                 <span>Meetings Scheduled</span>
                 <span className="badge" style={{ background: '#d1fae5', color: '#047857' }}>{kpis.meetingsCount}</span>
               </button>
 
               <button className={`nav-item ${currentTab === 'analytics' ? 'active' : ''}`} onClick={() => { setCurrentTab('analytics'); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-chart-pie"></i>
-                <span>Analytics & Scores</span>
+                <span>Analytics & Intelligence</span>
               </button>
             </nav>
           </div>
@@ -423,27 +646,50 @@ export default function Home() {
 
         {/* Main Content Area */}
         <main className="main-content">
-          {/* Topbar */}
+          {/* Topbar Universal Search & Date Picker Filter */}
           <header className="topbar">
-            <div className="topbar-search">
-              <i className="fa-solid fa-magnifying-glass search-icon"></i>
-              <input
-                type="text"
-                placeholder="Search Company, Founder, Email, City..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+            <div className="topbar-search" style={{ display: 'flex', gap: '10px', maxWidth: '600px' }}>
+              <div style={{ position: 'relative', flex: 1 }}>
+                <i className="fa-solid fa-magnifying-glass search-icon"></i>
+                <input
+                  type="text"
+                  placeholder="Search by Company, Founder, Phone, Email, City, or Date..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              {/* Exact Date Picker Input */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '0 12px' }}>
+                <i className="fa-solid fa-calendar" style={{ color: '#4f46e5', fontSize: '14px' }}></i>
+                <input
+                  type="date"
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', fontSize: '13px', outline: 'none', color: '#0f172a', fontWeight: 600 }}
+                  title="Filter Leads by Date"
+                />
+                {filterDate && (
+                  <button onClick={() => setFilterDate('')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '14px' }}>&times;</button>
+                )}
+              </div>
             </div>
 
             <div className="topbar-actions">
-              <button className="btn btn-outline" onClick={handleManualScan} disabled={scanning} title="Run instant manual scan for 2-day & 1-day alerts">
-                <i className={scanning ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-bell-concierge"}></i>
-                <span>{scanning ? 'Scanning...' : 'Scan Alerts Now'}</span>
+              {/* FEATURE 2: Export Filtered Leads to CSV Button */}
+              <button className="btn btn-outline" onClick={handleExportCSV} title="Export filtered leads to Excel / CSV">
+                <i className="fa-solid fa-file-arrow-down" style={{ color: '#10b981' }}></i>
+                <span>Export CSV</span>
               </button>
 
               <button className="btn btn-outline" onClick={() => setImportModalOpen(true)}>
                 <i className="fa-solid fa-file-excel"></i>
                 <span>Import Excel</span>
+              </button>
+
+              <button className="btn btn-outline" onClick={handleManualScan} disabled={scanning} title="Run manual alert scan">
+                <i className={scanning ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-rotate"}></i>
+                <span>{scanning ? 'Scanning...' : 'Scan Alerts'}</span>
               </button>
 
               <button
@@ -453,7 +699,7 @@ export default function Home() {
                 title="Delete all leads in database"
               >
                 <i className="fa-solid fa-trash-can"></i>
-                <span>Delete All Leads</span>
+                <span>Delete All</span>
               </button>
 
               <button className="btn btn-primary" onClick={() => {
@@ -471,25 +717,36 @@ export default function Home() {
                 <span>Add New Lead</span>
               </button>
 
-              <div className="notification-bell-wrapper" onClick={() => setDrawerOpen(true)} title="View Sent Email Notification Logs">
+              {/* Notification Bell with Dynamic Unread Counter */}
+              <div className="notification-bell-wrapper" onClick={handleOpenNotificationsDrawer} title="View Notification History">
                 <i className="fa-solid fa-bell"></i>
-                {notifications.length > 0 && <span className="notif-count">{notifications.length}</span>}
+                {unreadCount > 0 && <span className="notif-count">{unreadCount}</span>}
               </div>
             </div>
           </header>
 
-          {/* Registered Email Alert Banner */}
-          <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', padding: '14px 20px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <i className="fa-solid fa-bell-concierge" style={{ color: '#4f46e5', fontSize: '22px' }}></i>
-              <div>
-                <strong style={{ color: '#1e1b4b', fontSize: '14px' }}>Dual Alert Engine Active (iPhone, iPad, PC Responsive)</strong>
-                <p style={{ color: '#4338ca', fontSize: '12px', margin: 0 }}>Emails delivered to BOTH Admin & Intern accounts without inbox spam.</p>
-              </div>
+          {/* Professional Status Legend Bar */}
+          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '14px 20px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <i className="fa-solid fa-filter" style={{ color: '#4f46e5', fontSize: '16px' }}></i>
+              <strong style={{ color: '#0f172a', fontSize: '14px' }}>Priority Filters:</strong>
             </div>
-            <button className="btn btn-outline" style={{ background: '#fff', fontSize: '12px' }} onClick={() => setSettingsModalOpen(true)}>
-              Manage Emails
-            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <button className="pill-today" onClick={() => setCurrentTab('today')} style={{ cursor: 'pointer', border: 'none' }}>
+                <i className="fa-solid fa-clock-rotate-left"></i> Today's Follow-ups
+              </button>
+
+              <button className="pill-overdue" onClick={() => setCurrentTab('overdue')} style={{ cursor: 'pointer', border: 'none' }}>
+                <i className="fa-solid fa-triangle-exclamation"></i> Overdue Follow-ups
+              </button>
+
+              {filterDate && (
+                <span className="pill-upcoming">
+                  <i className="fa-solid fa-calendar"></i> Filtered: {filterDate}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* KPI Metrics Cards */}
@@ -499,16 +756,16 @@ export default function Home() {
               <div className="kpi-data">
                 <span className="kpi-title">Total Active Leads</span>
                 <h3>{kpis.totalLeads}</h3>
-                <span className="kpi-sub">Stored in MongoDB</span>
+                <span className="kpi-sub">Stored in Database</span>
               </div>
             </div>
 
             <div className="kpi-card glass">
               <div className="kpi-icon amber"><i className="fa-solid fa-bell"></i></div>
               <div className="kpi-data">
-                <span className="kpi-title">Follow-ups Due</span>
+                <span className="kpi-title">Follow-ups Scheduled</span>
                 <h3>{kpis.followupsCount}</h3>
-                <span className="kpi-sub">2-Day & 1-Day Alerts</span>
+                <span className="kpi-sub">Pending Action</span>
               </div>
             </div>
 
@@ -517,7 +774,7 @@ export default function Home() {
               <div className="kpi-data">
                 <span className="kpi-title">Monthly Nurture List</span>
                 <h3>{kpis.nurtureCount}</h3>
-                <span className="kpi-sub">Includes Not Interested</span>
+                <span className="kpi-sub">Long-term Prospects</span>
               </div>
             </div>
 
@@ -526,27 +783,30 @@ export default function Home() {
               <div className="kpi-data">
                 <span className="kpi-title">Meetings Scheduled</span>
                 <h3>{kpis.meetingsCount}</h3>
-                <span className="kpi-sub">High Intent Prospects</span>
+                <span className="kpi-sub">Qualified Meetings</span>
               </div>
             </div>
           </section>
 
-          {/* Main View & Table / Cards */}
-          <section className="view-container">
-            <div className="view-header">
-              <div>
-                <h2>
-                  {currentTab === 'all' && 'All Registered Leads'}
-                  {currentTab === 'followups' && 'Follow-up Leads'}
-                  {currentTab === 'nurture' && 'Monthly Nurture Pipeline'}
-                  {currentTab === 'meetings' && 'Meetings Scheduled'}
-                  {currentTab === 'analytics' && 'Lead Intelligence & Score Analytics'}
-                  {isCached && <span className="cache-badge"><i className="fa-solid fa-bolt"></i> Cached</span>}
-                </h2>
-                <p>Responsive Layout • iPhone SE, iPhone 12, iPads, and PCs Optimized.</p>
-              </div>
+          {/* Analytics & Intelligence Page vs Table */}
+          {currentTab === 'analytics' ? (
+            <AnalyticsDashboard leads={leads} />
+          ) : (
+            <section className="view-container">
+              <div className="view-header">
+                <div>
+                  <h2>
+                    {currentTab === 'all' && 'All Registered Leads'}
+                    {currentTab === 'today' && 'Today\'s Scheduled Follow-ups'}
+                    {currentTab === 'overdue' && 'Overdue Follow-ups'}
+                    {currentTab === 'followups' && 'All Scheduled Follow-ups'}
+                    {currentTab === 'reachout' && 'Outreach Pipeline'}
+                    {currentTab === 'nurture' && 'Monthly Nurture List'}
+                    {currentTab === 'meetings' && 'Meetings Scheduled'}
+                    {filterDate && ` (Date: ${filterDate})`}
+                  </h2>
+                </div>
 
-              {currentTab !== 'analytics' && (
                 <div className="view-filters">
                   <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="form-select">
                     <option value="">All Statuses</option>
@@ -555,213 +815,372 @@ export default function Home() {
                     <option value="Meeting Scheduled">Meeting Scheduled</option>
                     <option value="Qualified">Qualified</option>
                     <option value="Nurture">Nurture</option>
-                    <option value="Not Interested">Not Interested (Auto-Nurture)</option>
+                    <option value="Not Interested">Not Interested</option>
                     <option value="Won">Won</option>
                     <option value="Lost">Lost</option>
                   </select>
 
-                  <select value={scoreSort} onChange={(e) => setScoreSort(e.target.value)} className="form-select">
-                    <option value="default">Sort by Date Added</option>
+                  <select value={sortOption} onChange={(e) => setSortOption(e.target.value)} className="form-select" style={{ fontWeight: 700, color: '#4f46e5' }}>
+                    <option value="date_added_desc">Sort: Newest First</option>
+                    <option value="date_added_asc">Sort: Oldest First</option>
+                    <option value="followup_nearest">Follow-up: Nearest First</option>
+                    <option value="followup_farthest">Follow-up: Farthest First</option>
+                    <option value="reachout_nearest">Outreach: Nearest First</option>
+                    <option value="reachout_farthest">Outreach: Farthest First</option>
                     <option value="score_desc">Score: High to Low</option>
                     <option value="score_asc">Score: Low to High</option>
-                    <option value="followup">Follow-up Date</option>
                   </select>
                 </div>
-              )}
-            </div>
-
-            {/* Skeleton Loader vs Table vs Mobile Cards */}
-            {loading ? (
-              <SkeletonTableRows />
-            ) : currentTab === 'analytics' ? (
-              <div className="glass" style={{ padding: '24px', background: '#fff' }}>
-                <h3>Pipeline & Client Score Metrics (Scale 1 - 10)</h3>
-                <p style={{ color: 'var(--text-muted)', marginTop: '8px' }}>
-                  🔥 Hot Leads (Score 8 - 10 / 10): <strong>{leads.filter(l => (l.score_of_client || 5) >= 8).length}</strong>
-                  <br />
-                  ⚡ Warm Leads (Score 5 - 7 / 10): <strong>{leads.filter(l => (l.score_of_client || 5) >= 5 && (l.score_of_client || 5) < 8).length}</strong>
-                  <br />
-                  ❄️ Cold Leads (Score 1 - 4 / 10): <strong>{leads.filter(l => (l.score_of_client || 5) < 5).length}</strong>
-                </p>
               </div>
-            ) : (
-              <div className="table-card glass">
-                {/* Desktop & PC Table View */}
-                <div className="table-responsive">
-                  <table className="leads-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '35px' }}>#</th>
-                        <th>Company & Location</th>
-                        <th>Founder & Contact</th>
-                        <th>Pain Point</th>
-                        <th>Score</th>
-                        <th>Status & Next Action</th>
-                        <th>Outreach Date</th>
-                        <th>Follow-up Date</th>
-                        <th>Date Added</th>
-                        <th>Assigned & Source</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sortedLeads.length === 0 ? (
+
+              {loading ? (
+                <SkeletonTableRows />
+              ) : (
+                <div className="table-card glass">
+                  {/* Desktop Table View */}
+                  <div className="table-responsive">
+                    <table className="leads-table">
+                      <thead>
                         <tr>
-                          <td colSpan="11" style={{ textAlign: 'center', padding: '40px' }}>
-                            <i className="fa-solid fa-folder-open" style={{ fontSize: '32px', color: 'var(--text-dim)' }}></i>
-                            <p style={{ marginTop: '10px' }}>No leads found in database.</p>
-                          </td>
+                          <th style={{ width: '40px' }}>#</th>
+                          <th>Company & Location</th>
+                          <th>Founder & Contact</th>
+                          <th>Pain Point & Notes</th>
+                          <th>Score</th>
+                          <th>Status & Next Action</th>
+                          <th>Outreach Date</th>
+                          <th>Follow-up Date</th>
+                          <th>Date Added</th>
+                          <th>Agent & Source</th>
+                          <th>Actions</th>
                         </tr>
-                      ) : (
-                        sortedLeads.map((lead, index) => {
-                          let score = lead.score_of_client || 5;
-                          if (score > 10) score = Math.min(Math.max(Math.round(score / 10), 1), 10);
+                      </thead>
+                      <tbody>
+                        {sortedLeads.length === 0 ? (
+                          <tr>
+                            <td colSpan="11" style={{ textAlign: 'center', padding: '40px' }}>
+                              <i className="fa-solid fa-folder-open" style={{ fontSize: '32px', color: 'var(--text-dim)' }}></i>
+                              <p style={{ marginTop: '10px', color: '#64748b' }}>No leads found matching current filter criteria.</p>
+                            </td>
+                          </tr>
+                        ) : (
+                          sortedLeads.map((lead, index) => {
+                            let score = lead.score_of_client || 5;
+                            if (score > 10) score = Math.min(Math.max(Math.round(score / 10), 1), 10);
 
-                          const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
-                          const scoreIcon = score >= 8 ? '🔥' : score >= 5 ? '⚡' : '❄️';
+                            const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
+                            const scoreIconClass = score >= 8 ? 'fa-solid fa-fire' : score >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
 
-                          return (
-                            <tr key={lead._id || lead.id}>
-                              <td style={{ fontWeight: 700, color: 'var(--text-dim)' }}>{index + 1}</td>
-                              <td>
-                                <div className="company-cell">
-                                  <span className="company-name">{lead.company}</span>
-                                  <span className="location-sub"><i className="fa-solid fa-location-dot"></i> {lead.city || 'N/A'} {lead.locations ? '• ' + lead.locations : ''}</span>
-                                </div>
-                              </td>
-                              <td>
-                                <div className="founder-cell">
-                                  <span className="founder-name"><i className="fa-solid fa-user-tie"></i> {lead.founder || 'N/A'}</span>
-                                  {lead.email && <a href={`mailto:${lead.email}`} className="contact-link"><i className="fa-solid fa-envelope"></i> {lead.email}</a>}
-                                  {lead.contact && <span className="contact-link"><i className="fa-solid fa-phone"></i> {lead.contact}</span>}
-                                </div>
-                              </td>
-                              <td><span className="location-sub">{lead.pain_point || 'None specified'}</span></td>
-                              <td><span className={`score-badge ${scoreClass}`}>{scoreIcon} {score}/10</span></td>
-                              <td>
-                                <span className="status-pill status-new">{lead.status || 'New'}</span>
-                                {lead.new_status && <div className="date-pill" style={{ color: '#0369a1', fontWeight: 600, marginTop: '2px' }}>{lead.new_status}</div>}
-                                {lead.next_action && <div className="date-pill" style={{ marginTop: '4px' }}><i className="fa-solid fa-arrow-right"></i> {lead.next_action}</div>}
-                              </td>
-                              <td>
-                                {lead.reachout_date ? (
-                                  <span className="date-pill" style={{ color: '#0284c7', fontWeight: 600 }}>
-                                    <i className="fa-solid fa-paper-plane"></i> {lead.reachout_date}
+                            const followStatus = getFollowUpStatus(lead.follow_up_dates || lead.reachout_date);
+                            const rowHighlightClass = followStatus ? followStatus.rowClass : '';
+                            const notesText = lead.pain_point || lead.notes || '';
+
+                            return (
+                              <tr key={lead._id || lead.id} className={rowHighlightClass}>
+                                <td style={{ fontWeight: 700, color: 'var(--text-dim)' }}>{index + 1}</td>
+                                <td>
+                                  <div className="company-cell">
+                                    <span className="company-name">{lead.company}</span>
+                                    <span className="location-sub"><i className="fa-solid fa-location-dot"></i> {lead.city || 'N/A'} {lead.locations ? '• ' + lead.locations : ''}</span>
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="founder-cell">
+                                    <span className="founder-name"><i className="fa-solid fa-user-tie"></i> {lead.founder || 'N/A'}</span>
+                                    {lead.email && <a href={`mailto:${lead.email}`} className="contact-link contact-text"><i className="fa-solid fa-envelope"></i> {lead.email}</a>}
+                                    {lead.contact && <span className="contact-link contact-text"><i className="fa-solid fa-phone"></i> {lead.contact}</span>}
+                                  </div>
+                                </td>
+                                <td>
+                                  {notesText ? (
+                                    <div className="notes-preview-badge">
+                                      <span className="notes-text-truncated">{notesText}</span>
+                                      <button className="read-notes-btn" onClick={() => openNotesModal(lead.company, notesText, lead.activity_log || [])}>
+                                        <i className="fa-solid fa-eye"></i> View Notes & History
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button className="read-notes-btn" onClick={() => openNotesModal(lead.company, 'No notes recorded yet.', lead.activity_log || [])}>
+                                      <i className="fa-solid fa-clock-rotate-left"></i> View History
+                                    </button>
+                                  )}
+                                </td>
+                                <td>
+                                  <span className={`score-badge ${scoreClass}`}>
+                                    <i className={scoreIconClass}></i> {score}/10
                                   </span>
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
-                                )}
-                              </td>
-                              <td>
-                                {lead.follow_up_dates ? (
-                                  <span className="date-pill due-alert" style={{ color: '#d97706', fontWeight: 700 }}>
-                                    <i className="fa-solid fa-calendar-day"></i> {lead.follow_up_dates}
-                                  </span>
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
-                                )}
-                              </td>
-                              <td>
-                                {lead.date_added ? (
-                                  <span style={{ fontSize: '12px', color: '#475569' }}>
-                                    <i className="fa-solid fa-clock"></i> {lead.date_added}
-                                  </span>
-                                ) : (
-                                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
-                                )}
-                              </td>
-                              <td>
-                                <div className="location-sub"><strong>Agent:</strong> {lead.assigned_to || 'Sales'}</div>
-                                <div className="location-sub"><strong>Source:</strong> {lead.source || 'Direct'}</div>
-                              </td>
-                              <td>
-                                <div className="action-btns">
-                                  <button className="icon-btn" onClick={() => openEdit(lead)} title="Edit Lead"><i className="fa-solid fa-pen-to-square"></i></button>
-                                  {lead.email && <a href={`mailto:${lead.email}`} className="icon-btn" title="Send Email"><i className="fa-solid fa-envelope"></i></a>}
-                                  <button className="icon-btn delete-btn" onClick={() => handleDelete(lead._id || lead.id)} title="Delete Lead"><i className="fa-solid fa-trash"></i></button>
+                                </td>
+                                <td>
+                                  <span className="status-pill status-new">{lead.status || 'New'}</span>
+                                  {lead.new_status && <div style={{ fontSize: '11px', color: '#0369a1', fontWeight: 600, marginTop: '2px' }}>{lead.new_status}</div>}
+                                  {lead.next_action && <div style={{ fontSize: '11px', marginTop: '4px', color: '#475569' }}><i className="fa-solid fa-arrow-right"></i> {lead.next_action}</div>}
+                                </td>
+                                <td>
+                                  {lead.reachout_date ? (
+                                    <span className="date-pill" style={{ color: '#0284c7', fontWeight: 600 }}>
+                                      <i className="fa-solid fa-paper-plane"></i> {lead.reachout_date}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {lead.follow_up_dates ? (
+                                    followStatus ? (
+                                      <div>
+                                        <span className={followStatus.pillClass}>
+                                          <i className={followStatus.icon}></i> {followStatus.label}
+                                        </span>
+                                        <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                                          {lead.follow_up_dates}
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <span style={{ fontSize: '12px', color: '#475569' }}>{lead.follow_up_dates}</span>
+                                    )
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
+                                  )}
+                                </td>
+                                <td>
+                                  {lead.date_added ? (
+                                    <span style={{ fontSize: '12px', color: '#475569' }}>
+                                      <i className="fa-solid fa-clock"></i> {lead.date_added}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
+                                  )}
+                                </td>
+                                <td>
+                                  <div className="location-sub"><strong>Agent:</strong> {lead.assigned_to || 'Sales'}</div>
+                                  <div className="location-sub"><strong>Source:</strong> {lead.source || 'Direct'}</div>
+                                </td>
+                                <td>
+                                  <div className="action-btns">
+                                    {/* FEATURE 1: 1-Click Reschedule Action Button */}
+                                    <button className="icon-btn" onClick={() => openRescheduleModal(lead)} title="Reschedule Follow-up in 1 Click">
+                                      <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i>
+                                    </button>
+                                    <button className="icon-btn" onClick={() => openEdit(lead)} title="Edit Lead"><i className="fa-solid fa-pen-to-square"></i></button>
+                                    {lead.email && <a href={`mailto:${lead.email}`} className="icon-btn" title="Send Email"><i className="fa-solid fa-envelope"></i></a>}
+                                    <button className="icon-btn delete-btn" onClick={() => handleDelete(lead._id || lead.id)} title="Delete Lead"><i className="fa-solid fa-trash"></i></button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Mobile Touch Cards View */}
+                  <div className="mobile-lead-cards">
+                    {sortedLeads.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
+                        No leads found matching current criteria.
+                      </div>
+                    ) : (
+                      sortedLeads.map((lead, index) => {
+                        let score = lead.score_of_client || 5;
+                        if (score > 10) score = Math.min(Math.max(Math.round(score / 10), 1), 10);
+                        const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
+                        const scoreIconClass = score >= 8 ? 'fa-solid fa-fire' : score >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
+
+                        const followStatus = getFollowUpStatus(lead.follow_up_dates || lead.reachout_date);
+                        const notesText = lead.pain_point || lead.notes || '';
+
+                        return (
+                          <div key={lead._id || lead.id} className={`mobile-lead-card ${followStatus ? followStatus.rowClass : ''}`}>
+                            <div className="mobile-lead-card-header">
+                              <div>
+                                <strong style={{ fontSize: '15px', color: '#0f172a' }}>#{index + 1} {lead.company}</strong>
+                                <span style={{ fontSize: '12px', color: '#64748b', display: 'block' }}>{lead.city || 'N/A'}</span>
+                              </div>
+                              <span className={`score-badge ${scoreClass}`}><i className={scoreIconClass}></i> {score}/10</span>
+                            </div>
+
+                            <div className="mobile-lead-card-body">
+                              <div className="mobile-lead-card-row">
+                                <span className="label">Founder / Contact:</span>
+                                <strong>{lead.founder || 'N/A'} ({lead.contact || 'N/A'})</strong>
+                              </div>
+                              <div className="mobile-lead-card-row">
+                                <span className="label">Status:</span>
+                                <span className="status-pill">{lead.status || 'New'}</span>
+                              </div>
+                              {lead.follow_up_dates && (
+                                <div className="mobile-lead-card-row">
+                                  <span className="label">Follow-up Status:</span>
+                                  {followStatus ? (
+                                    <span className={followStatus.pillClass}><i className={followStatus.icon}></i> {followStatus.label}</span>
+                                  ) : (
+                                    <span>{lead.follow_up_dates}</span>
+                                  )}
                                 </div>
-                              </td>
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                              )}
+                              {lead.reachout_date && (
+                                <div className="mobile-lead-card-row">
+                                  <span className="label">Outreach Date:</span>
+                                  <span style={{ color: '#0284c7', fontWeight: 600 }}>{lead.reachout_date}</span>
+                                </div>
+                              )}
+                              {notesText && (
+                                <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '4px' }}>
+                                  <strong>Pain Point / Notes:</strong>
+                                  <div style={{ marginTop: '2px', background: '#f8fafc', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#334155' }}>
+                                    {notesText}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
+                              <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openRescheduleModal(lead)}>
+                                <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i> Reschedule
+                              </button>
+                              <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openEdit(lead)}>
+                                <i className="fa-solid fa-pen-to-square"></i>
+                              </button>
+                              {lead.email && (
+                                <a href={`mailto:${lead.email}`} className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', textDecoration: 'none' }}>
+                                  <i className="fa-solid fa-envelope"></i>
+                                </a>
+                              )}
+                              <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => handleDelete(lead._id || lead.id)}>
+                                <i className="fa-solid fa-trash"></i>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
+              )}
+            </section>
+          )}
+        </main>
 
-                {/* Mobile Touch Cards View (iPhone SE, iPhone 12, Small Touch Devices) */}
-                <div className="mobile-lead-cards">
-                  {sortedLeads.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>
-                      No leads found.
-                    </div>
-                  ) : (
-                    sortedLeads.map((lead, index) => {
-                      let score = lead.score_of_client || 5;
-                      if (score > 10) score = Math.min(Math.max(Math.round(score / 10), 1), 10);
-                      const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
-                      const scoreIcon = score >= 8 ? '🔥' : score >= 5 ? '⚡' : '❄️';
+        {/* FEATURE 1: MODAL - 1-Click Reschedule Follow-up */}
+        {rescheduleModalOpen && reschedulingLead && (
+          <div className="modal-overlay">
+            <div className="modal-card" style={{ maxWidth: '480px' }}>
+              <div className="modal-header">
+                <h3>
+                  <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5', marginRight: '8px' }}></i>
+                  Reschedule Follow-up for {reschedulingLead.company}
+                </h3>
+                <button className="close-modal-btn" onClick={() => setRescheduleModalOpen(false)}>&times;</button>
+              </div>
 
-                      return (
-                        <div key={lead._id || lead.id} className="mobile-lead-card">
-                          <div className="mobile-lead-card-header">
-                            <div>
-                              <strong style={{ fontSize: '15px', color: '#0f172a' }}>#{index + 1} {lead.company}</strong>
-                              <span style={{ fontSize: '12px', color: '#64748b', display: 'block' }}>{lead.city || 'N/A'}</span>
-                            </div>
-                            <span className={`score-badge ${scoreClass}`}>{scoreIcon} {score}/10</span>
-                          </div>
+              <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '16px' }}>
+                Current Follow-up Date: <strong style={{ color: '#0f172a' }}>{reschedulingLead.follow_up_dates || 'Not set'}</strong>
+              </p>
 
-                          <div className="mobile-lead-card-body">
-                            <div className="mobile-lead-card-row">
-                              <span className="label">Founder / Contact:</span>
-                              <strong>{lead.founder || 'N/A'} ({lead.contact || 'N/A'})</strong>
-                            </div>
-                            <div className="mobile-lead-card-row">
-                              <span className="label">Status:</span>
-                              <span className="status-pill">{lead.status || 'New'}</span>
-                            </div>
-                            {lead.follow_up_dates && (
-                              <div className="mobile-lead-card-row">
-                                <span className="label">Follow-up Date:</span>
-                                <span style={{ color: '#d97706', fontWeight: 700 }}>{lead.follow_up_dates}</span>
-                              </div>
-                            )}
-                            {lead.reachout_date && (
-                              <div className="mobile-lead-card-row">
-                                <span className="label">Outreach Date:</span>
-                                <span style={{ color: '#0284c7', fontWeight: 600 }}>{lead.reachout_date}</span>
-                              </div>
-                            )}
-                            {lead.pain_point && (
-                              <div style={{ fontSize: '12px', color: '#b91c1c', marginTop: '4px' }}>
-                                <strong>Pain Point:</strong> {lead.pain_point}
-                              </div>
-                            )}
-                          </div>
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '10px' }}>Quick 1-Click Options:</label>
 
-                          <div style={{ display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-                            <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openEdit(lead)}>
-                              <i className="fa-solid fa-pen-to-square"></i> Edit
-                            </button>
-                            {lead.email && (
-                              <a href={`mailto:${lead.email}`} className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center', textDecoration: 'none' }}>
-                                <i className="fa-solid fa-envelope"></i> Email
-                              </a>
-                            )}
-                            <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => handleDelete(lead._id || lead.id)}>
-                              <i className="fa-solid fa-trash"></i>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
+              <div className="reschedule-quick-grid">
+                <button className="quick-reschedule-btn" onClick={() => handleApplyReschedule(1)}>
+                  <i className="fa-solid fa-sun" style={{ color: '#f59e0b', fontSize: '18px' }}></i>
+                  <span>+1 Day (Tomorrow)</span>
+                </button>
+
+                <button className="quick-reschedule-btn" onClick={() => handleApplyReschedule(3)}>
+                  <i className="fa-solid fa-forward" style={{ color: '#0284c7', fontSize: '18px' }}></i>
+                  <span>+3 Days</span>
+                </button>
+
+                <button className="quick-reschedule-btn" onClick={() => handleApplyReschedule(7)}>
+                  <i className="fa-solid fa-calendar-week" style={{ color: '#10b981', fontSize: '18px' }}></i>
+                  <span>+1 Week</span>
+                </button>
+              </div>
+
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '6px' }}>Or Select Custom Date:</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="date"
+                    value={customRescheduleDate}
+                    onChange={(e) => setCustomRescheduleDate(e.target.value)}
+                    style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => handleApplyReschedule(0, customRescheduleDate)}
+                    disabled={!customRescheduleDate}
+                  >
+                    Save Custom Date
+                  </button>
                 </div>
               </div>
-            )}
-          </section>
-        </main>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setRescheduleModalOpen(false)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* FEATURE 3: MODAL - Notes & Activity Log History Timeline */}
+        {notesModalOpen && (
+          <div className="modal-overlay">
+            <div className="modal-card" style={{ maxWidth: '560px' }}>
+              <div className="modal-header">
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className="fa-solid fa-note-sticky" style={{ color: '#4f46e5' }}></i>
+                  Notes & History Timeline for {activeNotesData.company}
+                </h3>
+                <button className="close-modal-btn" onClick={() => setNotesModalOpen(false)}>&times;</button>
+              </div>
+
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>Current Notes / Pain Point:</label>
+              <div style={{
+                background: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '12px',
+                padding: '16px',
+                fontSize: '13px',
+                color: '#1e293b',
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+                marginTop: '6px',
+                marginBottom: '20px'
+              }}>
+                {activeNotesData.text || 'No notes recorded yet.'}
+              </div>
+
+              <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>
+                <i className="fa-solid fa-clock-rotate-left" style={{ color: '#4f46e5', marginRight: '6px' }}></i>
+                Lead Activity Log & Timeline:
+              </label>
+
+              <div style={{ maxHeight: '220px', overflowY: 'auto', paddingRight: '10px' }}>
+                {(!activeNotesData.activityLog || activeNotesData.activityLog.length === 0) ? (
+                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px' }}>No history entries logged yet.</p>
+                ) : (
+                  <div className="timeline-container">
+                    {activeNotesData.activityLog.map((logItem, i) => (
+                      <div key={i} className="timeline-item">
+                        <div className="timeline-dot"></div>
+                        <div className="timeline-action">{logItem.action}</div>
+                        <div className="timeline-details">{logItem.details}</div>
+                        <div className="timeline-meta">
+                          {new Date(logItem.timestamp).toLocaleString()} • {logItem.performedBy || 'Sales Team'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-primary" onClick={() => setNotesModalOpen(false)}>Close</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Slide-out Drawer: Notification History */}
         {drawerOpen && (
@@ -780,11 +1199,30 @@ export default function Home() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <i className="fa-solid fa-bell" style={{ color: '#4f46e5', fontSize: '20px' }}></i>
                   <div>
-                    <h3 style={{ margin: 0, fontSize: '16px', color: '#0f172a', fontWeight: 800 }}>Sent Email Alert History</h3>
-                    <span style={{ fontSize: '12px', color: '#64748b' }}>Dispatched to Admin & Intern accounts</span>
+                    <h3 style={{ margin: 0, fontSize: '16px', color: '#0f172a', fontWeight: 800 }}>Notification History</h3>
+                    <span style={{ fontSize: '12px', color: '#64748b' }}>Dispatched Email Alerts</span>
                   </div>
                 </div>
-                <button onClick={() => setDrawerOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>&times;</button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <button
+                    onClick={handleMarkAllAsRead}
+                    style={{
+                      background: '#e0e7ff',
+                      color: '#4338ca',
+                      border: 'none',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                    title="Mark all notifications as read"
+                  >
+                    <i className="fa-solid fa-check-double"></i> Mark All Read
+                  </button>
+                  <button onClick={() => setDrawerOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}>&times;</button>
+                </div>
               </div>
 
               <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
@@ -805,8 +1243,8 @@ export default function Home() {
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
                         <span style={{
-                          background: notif.timing?.includes('2 DAYS') ? '#e0f2fe' : '#e0e7ff',
-                          color: notif.timing?.includes('2 DAYS') ? '#0369a1' : '#3730a3',
+                          background: '#e0e7ff',
+                          color: '#3730a3',
                           fontSize: '11px',
                           fontWeight: 800,
                           padding: '3px 8px',
@@ -843,14 +1281,14 @@ export default function Home() {
           <div className="modal-overlay">
             <div className="modal-card">
               <div className="modal-header">
-                <h3><i className="fa-solid fa-envelope"></i> Registered Email & Notification Settings</h3>
+                <h3><i className="fa-solid fa-envelope"></i> Notification Settings</h3>
                 <button className="close-modal-btn" onClick={() => setSettingsModalOpen(false)}>&times;</button>
               </div>
               
               <div style={{ background: '#f8fafc', padding: '18px', borderRadius: '10px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
-                <h4 style={{ color: '#0f172a', fontSize: '15px', marginBottom: '6px' }}>Notification Recipient Email Addresses</h4>
+                <h4 style={{ color: '#0f172a', fontSize: '15px', marginBottom: '6px' }}>Notification Recipients</h4>
                 <p style={{ color: '#475569', fontSize: '13px', marginBottom: '12px' }}>
-                  Separate emails with commas (e.g. <code>admin@yourcompany.com, intern@yourcompany.com</code>). Both accounts will receive 2-day and 1-day reminders.
+                  Separate emails with commas (e.g. <code>admin@company.com, intern@company.com</code>).
                 </p>
                 
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -986,7 +1424,7 @@ export default function Home() {
           <div className="modal-overlay">
             <div className="modal-card" style={{ maxWidth: '500px' }}>
               <div className="modal-header">
-                <h3>Import Leads into MongoDB</h3>
+                <h3>Import Leads into Database</h3>
                 <button className="close-modal-btn" onClick={() => setImportModalOpen(false)}>&times;</button>
               </div>
               <form onSubmit={handleImportSubmit}>
@@ -1006,6 +1444,375 @@ export default function Home() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Analytics Dashboard Helper
+function AnalyticsDashboard({ leads }) {
+  const [subTab, setSubTab] = useState('overview');
+  const total = leads.length || 1;
+
+  const statusCounts = {
+    'New': leads.filter(l => (l.status || '').toLowerCase() === 'new').length,
+    'Contacted': leads.filter(l => (l.status || '').toLowerCase() === 'contacted').length,
+    'Meeting Scheduled': leads.filter(l => (l.status || '').toLowerCase().includes('meeting')).length,
+    'Qualified': leads.filter(l => (l.status || '').toLowerCase() === 'qualified').length,
+    'Nurture': leads.filter(l => (l.status || '').toLowerCase().includes('nurture') || (l.status || '').toLowerCase().includes('not interested')).length,
+    'Won': leads.filter(l => (l.status || '').toLowerCase() === 'won').length,
+  };
+
+  const hotLeads = leads.filter(l => (l.score_of_client || 5) >= 8).length;
+  const warmLeads = leads.filter(l => (l.score_of_client || 5) >= 5 && (l.score_of_client || 5) < 8).length;
+  const coldLeads = leads.filter(l => (l.score_of_client || 5) < 5).length;
+
+  const hotPct = Math.round((hotLeads / total) * 100);
+  const warmPct = Math.round((warmLeads / total) * 100);
+  const coldPct = Math.round((coldLeads / total) * 100);
+
+  const totalLeadsCount = leads.length;
+  const contactedCount = leads.filter(l => l.status && l.status !== 'New').length;
+  const meetingsCount = statusCounts['Meeting Scheduled'];
+  const wonCount = statusCounts['Won'];
+
+  const dateCountsMap = {};
+  leads.forEach(l => {
+    const d = l.follow_up_dates || l.reachout_date || l.date_added;
+    if (d) {
+      const iso = normalizeToISO(d) || d;
+      dateCountsMap[iso] = (dateCountsMap[iso] || 0) + 1;
+    }
+  });
+
+  const sortedDates = Object.entries(dateCountsMap).sort((a, b) => new Date(b[0]) - new Date(a[0]));
+
+  const sourceMap = {};
+  const cityMap = {};
+  leads.forEach(l => {
+    const src = l.source || 'Direct';
+    sourceMap[src] = (sourceMap[src] || 0) + 1;
+
+    const city = l.city || 'Unspecified';
+    cityMap[city] = (cityMap[city] || 0) + 1;
+  });
+
+  const sortedSources = Object.entries(sourceMap).sort((a, b) => b[1] - a[1]);
+  const sortedCities = Object.entries(cityMap).sort((a, b) => b[1] - a[1]);
+
+  const sliceColors = {
+    'New': '#4f46e5',
+    'Contacted': '#0284c7',
+    'Meeting Scheduled': '#10b981',
+    'Qualified': '#7e22ce',
+    'Nurture': '#f59e0b',
+    'Won': '#059669',
+  };
+
+  let cumulativeAngle = 0;
+  const donutSlices = Object.entries(statusCounts).map(([label, count]) => {
+    const percentage = count / total;
+    const angle = percentage * 360;
+    const startAngle = cumulativeAngle;
+    cumulativeAngle += angle;
+    return { label, count, percentage: Math.round(percentage * 100), startAngle, angle, color: sliceColors[label] || '#94a3b8' };
+  });
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div className="analytics-tab-bar">
+        <button className={`analytics-tab-btn ${subTab === 'overview' ? 'active' : ''}`} onClick={() => setSubTab('overview')}>
+          <i className="fa-solid fa-chart-pie"></i> Executive Overview
+        </button>
+        <button className={`analytics-tab-btn ${subTab === 'date_wise' ? 'active' : ''}`} onClick={() => setSubTab('date_wise')}>
+          <i className="fa-solid fa-calendar-days"></i> Date-Wise Analysis
+        </button>
+        <button className={`analytics-tab-btn ${subTab === 'lead_wise' ? 'active' : ''}`} onClick={() => setSubTab('lead_wise')}>
+          <i className="fa-solid fa-users-viewfinder"></i> Lead & Source Intelligence
+        </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+        <div className="glass" style={{ padding: '20px', background: '#fff' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Hot Prospects Ratio</span>
+          <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#dc2626', marginTop: '4px' }}>
+            <i className="fa-solid fa-fire"></i> {hotPct}%
+          </h3>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>{hotLeads} High Intent Leads</span>
+        </div>
+
+        <div className="glass" style={{ padding: '20px', background: '#fff' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Meeting Conversion Rate</span>
+          <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
+            <i className="fa-solid fa-handshake"></i> {Math.round((meetingsCount / total) * 100)}%
+          </h3>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>{meetingsCount} Meetings Booked</span>
+        </div>
+
+        <div className="glass" style={{ padding: '20px', background: '#fff' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Active Nurture Pipeline</span>
+          <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#d97706', marginTop: '4px' }}>
+            <i className="fa-solid fa-seedling"></i> {statusCounts['Nurture']}
+          </h3>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Auto-Nurtured Prospects</span>
+        </div>
+
+        <div className="glass" style={{ padding: '20px', background: '#fff' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Recorded Dates</span>
+          <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#4f46e5', marginTop: '4px' }}>
+            <i className="fa-solid fa-calendar"></i> {sortedDates.length}
+          </h3>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Distinct Event Dates</span>
+        </div>
+      </div>
+
+      {subTab === 'overview' && (
+        <div className="analytics-grid">
+          <div className="chart-card">
+            <div className="chart-header">
+              <h3><i className="fa-solid fa-chart-pie" style={{ color: '#4f46e5' }}></i> Lead Status Breakdown</h3>
+              <span>Distribution by Pipeline Stage</span>
+            </div>
+
+            <div className="pie-chart-wrapper">
+              <svg width="160" height="160" viewBox="0 0 42 42" style={{ transform: 'rotate(-90deg)', borderRadius: '50%' }}>
+                {donutSlices.map((slice, i) => (
+                  <circle
+                    key={i}
+                    cx="21"
+                    cy="21"
+                    r="15.91549430918954"
+                    fill="transparent"
+                    stroke={slice.color}
+                    strokeWidth="6"
+                    strokeDasharray={`${slice.percentage} ${100 - slice.percentage}`}
+                    strokeDashoffset={100 - slice.startAngle / 3.6}
+                  />
+                ))}
+                <g style={{ transform: 'rotate(90deg) translate(0px, -42px)' }}>
+                  <text x="21" y="20" textAnchor="middle" fontSize="6" fontWeight="800" fill="#0f172a">{totalLeadsCount}</text>
+                  <text x="21" y="25" textAnchor="middle" fontSize="3" fontWeight="600" fill="#64748b">LEADS</text>
+                </g>
+              </svg>
+
+              <div className="pie-legend">
+                {donutSlices.map((slice, i) => (
+                  <div key={i} className="pie-legend-item">
+                    <div>
+                      <span className="pie-legend-color" style={{ background: slice.color }}></span>
+                      <span style={{ fontWeight: 600, color: '#0f172a' }}>{slice.label}</span>
+                    </div>
+                    <strong>{slice.count} ({slice.percentage}%)</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="chart-card">
+            <div className="chart-header">
+              <h3><i className="fa-solid fa-chart-bar" style={{ color: '#0284c7' }}></i> Client Score Quality Distribution</h3>
+              <span>Score Scale 1 to 10</span>
+            </div>
+
+            <div className="bar-chart-container">
+              <div className="bar-row">
+                <div className="bar-label-group">
+                  <span style={{ color: '#dc2626' }}><i className="fa-solid fa-fire"></i> High Priority (Score 8 - 10)</span>
+                  <strong>{hotLeads} Leads ({hotPct}%)</strong>
+                </div>
+                <div className="bar-track">
+                  <div className="bar-fill" style={{ width: `${hotPct}%`, background: '#dc2626' }}></div>
+                </div>
+              </div>
+
+              <div className="bar-row">
+                <div className="bar-label-group">
+                  <span style={{ color: '#d97706' }}><i className="fa-solid fa-bolt"></i> Moderate Priority (Score 5 - 7)</span>
+                  <strong>{warmLeads} Leads ({warmPct}%)</strong>
+                </div>
+                <div className="bar-track">
+                  <div className="bar-fill" style={{ width: `${warmPct}%`, background: '#f59e0b' }}></div>
+                </div>
+              </div>
+
+              <div className="bar-row">
+                <div className="bar-label-group">
+                  <span style={{ color: '#0284c7' }}><i className="fa-solid fa-snowflake"></i> Low Priority (Score 1 - 4)</span>
+                  <strong>{coldLeads} Leads ({coldPct}%)</strong>
+                </div>
+                <div className="bar-track">
+                  <div className="bar-fill" style={{ width: `${coldPct}%`, background: '#0284c7' }}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="chart-card">
+            <div className="chart-header">
+              <h3><i className="fa-solid fa-filter" style={{ color: '#10b981' }}></i> Lead Conversion Funnel</h3>
+              <span>Pipeline Conversion Velocity</span>
+            </div>
+
+            <div className="funnel-container">
+              <div className="funnel-step">
+                <div className="funnel-step-title"><i className="fa-solid fa-building" style={{ color: '#4f46e5' }}></i> 1. Total Registered Leads</div>
+                <span className="funnel-step-val">{totalLeadsCount}</span>
+              </div>
+              <div className="funnel-step" style={{ marginLeft: '12px' }}>
+                <div className="funnel-step-title"><i className="fa-solid fa-comments" style={{ color: '#0284c7' }}></i> 2. Contacted & Engaged</div>
+                <span className="funnel-step-val">{contactedCount}</span>
+              </div>
+              <div className="funnel-step" style={{ marginLeft: '24px' }}>
+                <div className="funnel-step-title"><i className="fa-solid fa-handshake" style={{ color: '#10b981' }}></i> 3. Meetings Scheduled</div>
+                <span className="funnel-step-val">{meetingsCount}</span>
+              </div>
+              <div className="funnel-step" style={{ marginLeft: '36px', background: '#ecfdf5', borderColor: '#a7f3d0' }}>
+                <div className="funnel-step-title" style={{ color: '#047857' }}><i className="fa-solid fa-trophy" style={{ color: '#059669' }}></i> 4. Deals Closed (Won)</div>
+                <span className="funnel-step-val" style={{ color: '#059669' }}>{wonCount}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="chart-card">
+            <div className="chart-header">
+              <h3><i className="fa-solid fa-chart-line" style={{ color: '#7e22ce' }}></i> Lead Growth Trendline</h3>
+              <span>Acquisition Growth</span>
+            </div>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <svg viewBox="0 0 400 120" style={{ width: '100%', height: '120px', overflow: 'visible' }}>
+                <defs>
+                  <linearGradient id="gradientTrend" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.4" />
+                    <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.0" />
+                  </linearGradient>
+                </defs>
+                <path d="M 0,90 Q 80,40 160,70 T 320,30 T 400,20 L 400,120 L 0,120 Z" fill="url(#gradientTrend)" />
+                <path d="M 0,90 Q 80,40 160,70 T 320,30 T 400,20" fill="none" stroke="#4f46e5" strokeWidth="3" />
+                <circle cx="80" cy="50" r="4" fill="#4f46e5" />
+                <circle cx="160" cy="70" r="4" fill="#4f46e5" />
+                <circle cx="320" cy="30" r="4" fill="#4f46e5" />
+                <circle cx="400" cy="20" r="5" fill="#10b981" />
+              </svg>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginTop: '8px' }}>
+                <span>Week 1</span>
+                <span>Week 2</span>
+                <span>Week 3</span>
+                <span>Today (Peak)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'date_wise' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <div className="chart-card">
+            <div className="chart-header">
+              <h3><i className="fa-solid fa-calendar-days" style={{ color: '#4f46e5' }}></i> Date-Wise Lead Activity Breakdown</h3>
+              <span>Lead Volume & Follow-up Load per Date</span>
+            </div>
+
+            <div style={{ overflowX: 'auto' }}>
+              <table className="leads-table">
+                <thead>
+                  <tr>
+                    <th>Event Date</th>
+                    <th>Scheduled Follow-ups</th>
+                    <th>Volume Load Share</th>
+                    <th>Activity Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedDates.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" style={{ textAlign: 'center', padding: '30px', color: '#94a3b8' }}>No date-wise events logged.</td>
+                    </tr>
+                  ) : (
+                    sortedDates.map(([dateVal, count]) => {
+                      const sharePct = Math.round((count / total) * 100);
+                      const followStatus = getFollowUpStatus(dateVal);
+                      return (
+                        <tr key={dateVal}>
+                          <td style={{ fontWeight: 700, color: '#0f172a' }}>
+                            <i className="fa-solid fa-calendar-day" style={{ color: '#4f46e5', marginRight: '6px' }}></i>
+                            {dateVal}
+                          </td>
+                          <td style={{ fontWeight: 800, color: '#4f46e5' }}>{count} Leads</td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              <div className="bar-track" style={{ flex: 1, height: '8px' }}>
+                                <div className="bar-fill" style={{ width: `${Math.max(sharePct, 15)}%`, background: '#4f46e5' }}></div>
+                              </div>
+                              <span style={{ fontSize: '11px', fontWeight: 600 }}>{sharePct}%</span>
+                            </div>
+                          </td>
+                          <td>
+                            {followStatus ? (
+                              <span className={followStatus.pillClass}><i className={followStatus.icon}></i> {followStatus.label}</span>
+                            ) : (
+                              <span className="pill-upcoming">Scheduled</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {subTab === 'lead_wise' && (
+        <div className="analytics-grid">
+          <div className="chart-card">
+            <div className="chart-header">
+              <h3><i className="fa-solid fa-paper-plane" style={{ color: '#0284c7' }}></i> Acquisition Source Performance</h3>
+              <span>Distribution by Channel</span>
+            </div>
+            <div className="bar-chart-container">
+              {sortedSources.map(([src, count]) => {
+                const pct = Math.round((count / total) * 100);
+                return (
+                  <div key={src} className="bar-row">
+                    <div className="bar-label-group">
+                      <span><i className="fa-solid fa-bullseye" style={{ color: '#0284c7' }}></i> {src}</span>
+                      <strong>{count} Leads ({pct}%)</strong>
+                    </div>
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ width: `${Math.max(pct, 10)}%`, background: '#0284c7' }}></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="chart-card">
+            <div className="chart-header">
+              <h3><i className="fa-solid fa-location-dot" style={{ color: '#10b981' }}></i> Top Geographical Cities</h3>
+              <span>Leads Location Spread</span>
+            </div>
+            <div className="bar-chart-container">
+              {sortedCities.map(([city, count]) => {
+                const pct = Math.round((count / total) * 100);
+                return (
+                  <div key={city} className="bar-row">
+                    <div className="bar-label-group">
+                      <span><i className="fa-solid fa-city" style={{ color: '#10b981' }}></i> {city}</span>
+                      <strong>{count} Leads ({pct}%)</strong>
+                    </div>
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ width: `${Math.max(pct, 10)}%`, background: '#10b981' }}></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,54 +1,54 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
-const leadSchema = new mongoose.Schema({
-  company: { type: String, required: true, trim: true, index: true },
-  city: { type: String, trim: true },
-  locations: { type: String, trim: true },
-  founder: { type: String, trim: true },
-  linkedin: { type: String, trim: true },
-  contact: { type: String, trim: true },
-  email: { type: String, trim: true, index: true },
-  pain_point: { type: String, trim: true },
+const ActivityLogSchema = new mongoose.Schema({
+  timestamp: { type: Date, default: Date.now },
+  action: { type: String, required: true },
+  details: { type: String, default: '' },
+  performedBy: { type: String, default: 'Sales Team' }
+});
+
+const LeadSchema = new mongoose.Schema({
+  company: { type: String, required: true, trim: true },
+  city: { type: String, default: '' },
+  locations: { type: String, default: '' },
+  founder: { type: String, default: '' },
+  linkedin: { type: String, default: '' },
+  contact: { type: String, default: '' },
+  email: { type: String, default: '' },
+  pain_point: { type: String, default: '' },
   source: { type: String, default: 'Direct' },
   date_added: { type: String, default: () => new Date().toISOString().split('T')[0] },
   assigned_to: { type: String, default: 'Sales Team' },
-  status: { type: String, default: 'New', index: true },
-  notes: { type: String, trim: true },
-  score_of_client: { type: Number, default: 5, index: true }, // Out of 10
-  reachout_date: { type: String, index: true },
-  new_status: { type: String, trim: true },
-  next_action: { type: String, trim: true },
-  follow_up_dates: { type: String, index: true },
-  created_at: { type: Date, default: Date.now }
+  status: { type: String, default: 'New' },
+  notes: { type: String, default: '' },
+  score_of_client: { type: Number, min: 1, max: 10, default: 5 },
+  reachout_date: { type: String, default: '' },
+  new_status: { type: String, default: '' },
+  next_action: { type: String, default: '' },
+  follow_up_dates: { type: String, default: '' },
+  activity_log: [ActivityLogSchema]
 }, { timestamps: true });
 
-// Auto calculate score out of 10 and handle "Not Interested" Nurture list auto-classification
-leadSchema.pre('save', function(next) {
-  const st = (this.status || '').toLowerCase();
-  const nst = (this.new_status || '').toLowerCase();
+// Pre-save hook: Route "Not Interested" leads to Monthly Nurture List automatically & log activity
+LeadSchema.pre('save', function(next) {
+  const currentStatus = (this.status || '').toLowerCase();
+  const currentNewStatus = (this.new_status || '').toLowerCase();
 
-  // If status is "Not Interested", automatically classify into Nurture List
-  if (st.includes('not interested') || nst.includes('not interested')) {
+  if (currentStatus.includes('not interested') || currentNewStatus.includes('not interested')) {
     this.new_status = 'Nurture (Not Interested)';
   }
 
-  if (this.score_of_client === undefined || this.score_of_client === null) {
-    let computed = 5; // base score out of 10
-
-    if (st.includes('meeting')) computed += 3;
-    else if (st.includes('contacted') || st.includes('qualified')) computed += 1;
-    else if (st.includes('won')) computed += 4;
-    else if (st.includes('not interested')) computed = 3;
-    else if (st.includes('lost')) computed = 1;
-
-    if (this.email) computed += 1;
-    if (this.contact) computed += 1;
-
-    this.score_of_client = Math.min(Math.max(computed, 1), 10);
-  } else if (this.score_of_client > 10) {
-    this.score_of_client = Math.min(Math.max(Math.round(this.score_of_client / 10), 1), 10);
+  // Push initial creation activity if log is empty
+  if (!this.activity_log || this.activity_log.length === 0) {
+    this.activity_log = [{
+      timestamp: new Date(),
+      action: 'Lead Created',
+      details: `Registered with status '${this.status || 'New'}'`,
+      performedBy: this.assigned_to || 'Sales Team'
+    }];
   }
+
   next();
 });
 
-module.exports = mongoose.models.Lead || mongoose.model('Lead', leadSchema);
+export default mongoose.models.Lead || mongoose.model('Lead', LeadSchema);

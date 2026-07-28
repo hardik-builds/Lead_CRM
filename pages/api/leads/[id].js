@@ -15,7 +15,47 @@ export default async function handler(req, res) {
 
   if (req.method === 'PUT') {
     try {
-      const updated = await Lead.findByIdAndUpdate(id, req.body, { new: true });
+      const existing = await Lead.findById(id);
+      if (!existing) {
+        return res.status(404).json({ success: false, error: 'Lead not found' });
+      }
+
+      const updateData = { ...req.body };
+
+      // Build activity log entry if follow-up date or status changed
+      const newActivity = [];
+      if (updateData.follow_up_dates && updateData.follow_up_dates !== existing.follow_up_dates) {
+        newActivity.push({
+          timestamp: new Date(),
+          action: 'Follow-up Rescheduled',
+          details: `Rescheduled from '${existing.follow_up_dates || 'None'}' to '${updateData.follow_up_dates}'`,
+          performedBy: updateData.assigned_to || 'Sales Team'
+        });
+      }
+
+      if (updateData.status && updateData.status !== existing.status) {
+        newActivity.push({
+          timestamp: new Date(),
+          action: 'Status Updated',
+          details: `Status changed from '${existing.status}' to '${updateData.status}'`,
+          performedBy: updateData.assigned_to || 'Sales Team'
+        });
+      }
+
+      if (updateData.notes && updateData.notes !== existing.notes) {
+        newActivity.push({
+          timestamp: new Date(),
+          action: 'Notes Updated',
+          details: `Updated notes: "${updateData.notes.slice(0, 60)}..."`,
+          performedBy: updateData.assigned_to || 'Sales Team'
+        });
+      }
+
+      if (newActivity.length > 0) {
+        updateData.$push = { activity_log: { $each: newActivity } };
+      }
+
+      const updated = await Lead.findByIdAndUpdate(id, updateData, { new: true });
       cacheService.flush();
       checkAndSendReminders();
 
