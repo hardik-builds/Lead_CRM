@@ -75,7 +75,6 @@ export default async function handler(req, res) {
       }
 
       cacheService.flush();
-      checkAndSendReminders();
 
       return res.status(200).json({ success: true, count: leadIds.length });
     } catch (err) {

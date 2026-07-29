@@ -66,7 +66,6 @@ export default async function handler(req, res) {
 
       const updated = await Lead.findByIdAndUpdate(id, updateData, { new: true });
       cacheService.flush();
-      checkAndSendReminders();
 
       return res.status(200).json({ success: true, lead: updated });
     } catch (err) {

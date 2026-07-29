@@ -164,7 +164,6 @@ export default async function handler(req, res) {
       await lead.save();
 
       cacheService.flush();
-      checkAndSendReminders();
 
       return res.status(201).json({ success: true, lead });
     } catch (err) {
