@@ -1,8 +1,8 @@
-import dbConnect from '../../lib/dbConnect';
-import Lead from '../../models/Lead';
-import cacheService from '../../lib/cacheService';
-import { checkAndSendReminders } from '../../lib/reminderService';
-import { verifyRequestAuth } from '../../lib/auth';
+import dbConnect from '../../../lib/dbConnect';
+import Lead from '../../../models/Lead';
+import cacheService from '../../../lib/cacheService';
+import { checkAndSendReminders } from '../../../lib/reminderService';
+import { verifyRequestAuth } from '../../../lib/auth';
 
 export default async function handler(req, res) {
   const auth = verifyRequestAuth(req);
