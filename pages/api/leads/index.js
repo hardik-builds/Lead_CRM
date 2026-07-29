@@ -67,24 +67,26 @@ export default async function handler(req, res) {
         });
       }
 
-      // Tab Extractions & Filters
+      // Tab Extractions & Strict Overdue / Today Filters
       let filtered = allLeads;
       if (tab === 'followups') {
-        filtered = allLeads.filter(l => l.follow_up_dates || l.reachout_date);
+        filtered = allLeads.filter(l => l.follow_up_dates && l.follow_up_dates.trim() !== '');
       } else if (tab === 'today') {
         filtered = allLeads.filter(l => {
           const fuISO = normalizeToISO(l.follow_up_dates);
-          const roISO = normalizeToISO(l.reachout_date);
-          return fuISO === todayStr || roISO === todayStr;
+          return fuISO === todayStr;
         });
       } else if (tab === 'overdue') {
         filtered = allLeads.filter(l => {
           const fuISO = normalizeToISO(l.follow_up_dates);
-          const roISO = normalizeToISO(l.reachout_date);
-          return (fuISO && fuISO < todayStr) || (roISO && roISO < todayStr);
+          const status = (l.status || '').toLowerCase();
+          // Closed/won/lost leads are excluded
+          if (status === 'won' || status === 'lost') return false;
+          // Strictly check if follow_up_dates is set and is prior to today
+          return fuISO && fuISO < todayStr;
         });
       } else if (tab === 'reachout') {
-        filtered = allLeads.filter(l => l.reachout_date);
+        filtered = allLeads.filter(l => l.reachout_date && l.reachout_date.trim() !== '');
       } else if (tab === 'nurture') {
         const threshold = parseInt(process.env.NURTURE_DAYS_THRESHOLD || '30', 10);
         filtered = allLeads.filter(l => {
@@ -113,7 +115,7 @@ export default async function handler(req, res) {
 
       const totalCount = await Lead.countDocuments();
       const followupsCount = await Lead.countDocuments({
-        $or: [{ follow_up_dates: { $ne: '' } }, { reachout_date: { $ne: '' } }]
+        follow_up_dates: { $exists: true, $ne: '' }
       });
       const nurtureCount = await Lead.countDocuments({
         $or: [

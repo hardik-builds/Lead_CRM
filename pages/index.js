@@ -63,6 +63,12 @@ export default function Home() {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
+  // Bulk Multi-Select State
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [bulkStatusInput, setBulkStatusInput] = useState('');
+  const [bulkRescheduleDate, setBulkRescheduleDate] = useState('');
+  const [bulkExecuting, setBulkExecuting] = useState(false);
+
   // Registered Email State
   const [registeredEmailInput, setRegisteredEmailInput] = useState('');
   const [emailSavedStatus, setEmailSavedStatus] = useState('');
@@ -288,6 +294,113 @@ export default function Home() {
     setReschedulingLead(lead);
     setCustomRescheduleDate(lead.follow_up_dates || new Date().toISOString().split('T')[0]);
     setRescheduleModalOpen(true);
+  };
+
+  // FEATURE: Mark Followed Up (Complete) Handler
+  const handleMarkFollowedUp = async (lead) => {
+    try {
+      const todayISO = new Date().toISOString().split('T')[0];
+      const res = await fetch(`/api/leads/${lead._id || lead.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status: 'Contacted',
+          follow_up_dates: '', // clear pending follow-up date
+          activity_log: [
+            ...(lead.activity_log || []),
+            {
+              timestamp: new Date(),
+              action: 'Follow-up Completed',
+              details: `Follow-up completed on ${todayISO}. Pending follow-up date cleared.`,
+              performedBy: loggedInUserEmail || 'Sales Team'
+            }
+          ]
+        })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success) {
+        fetchLeads();
+        fetchNotifications();
+      } else {
+        alert('Failed to mark completed: ' + (data.error || 'Error'));
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+  // FEATURE: Bulk Multi-Select & Batch Actions Handlers
+  const toggleSelectLead = (id) => {
+    setSelectedLeadIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    const currentIds = sortedLeads.map(l => l._id || l.id);
+    if (selectedLeadIds.length === currentIds.length && currentIds.length > 0) {
+      setSelectedLeadIds([]);
+    } else {
+      setSelectedLeadIds(currentIds);
+    }
+  };
+
+  const handleExecuteBulkAction = async (action, extraData = {}) => {
+    if (selectedLeadIds.length === 0) return;
+
+    if (action === 'delete' && !confirm(`Are you sure you want to delete all ${selectedLeadIds.length} selected leads?`)) {
+      return;
+    }
+
+    setBulkExecuting(true);
+    try {
+      const res = await fetch('/api/leads/bulk', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          leadIds: selectedLeadIds,
+          action,
+          ...extraData
+        })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success) {
+        alert(`Successfully processed ${data.count} leads.`);
+        setSelectedLeadIds([]);
+        setBulkStatusInput('');
+        setBulkRescheduleDate('');
+        fetchLeads();
+        fetchNotifications();
+      } else {
+        alert('Bulk action error: ' + (data.error || 'Failed'));
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      setBulkExecuting(false);
+    }
+  };
+
+  // FEATURE: Kanban Drag & Drop / Move Stage Handler
+  const handleMoveStage = async (leadId, newStatus) => {
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+      if (data.success) {
+        fetchLeads();
+        fetchNotifications();
+      }
+    } catch (err) {
+      console.error('Move stage error:', err);
+    }
   };
 
   const handleApplyReschedule = async (daysToAdd, customTargetDate = null) => {
@@ -616,6 +729,11 @@ export default function Home() {
                 <span className="badge" style={{ background: '#d1fae5', color: '#047857' }}>{kpis.meetingsCount}</span>
               </button>
 
+              <button className={`nav-item ${currentTab === 'kanban' ? 'active' : ''}`} onClick={() => { setCurrentTab('kanban'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-table-columns" style={{ color: '#4f46e5' }}></i>
+                <span>Kanban Pipeline</span>
+              </button>
+
               <button className={`nav-item ${currentTab === 'analytics' ? 'active' : ''}`} onClick={() => { setCurrentTab('analytics'); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-chart-pie"></i>
                 <span>Analytics & Intelligence</span>
@@ -788,9 +906,17 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Analytics & Intelligence Page vs Table */}
+          {/* Analytics & Intelligence Page vs Kanban vs Table */}
           {currentTab === 'analytics' ? (
             <AnalyticsDashboard leads={leads} />
+          ) : currentTab === 'kanban' ? (
+            <KanbanView
+              leads={sortedLeads}
+              onMoveStage={handleMoveStage}
+              onEdit={openEdit}
+              onReschedule={openRescheduleModal}
+              onMarkDone={handleMarkFollowedUp}
+            />
           ) : (
             <section className="view-container">
               <div className="view-header">
@@ -842,12 +968,22 @@ export default function Home() {
                     <table className="leads-table">
                       <thead>
                         <tr>
+                          <th style={{ width: '36px', textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={selectedLeadIds.length === sortedLeads.length && sortedLeads.length > 0}
+                              onChange={toggleSelectAll}
+                              title="Select All Leads"
+                              style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#4f46e5' }}
+                            />
+                          </th>
                           <th style={{ width: '40px' }}>#</th>
                           <th>Company & Location</th>
                           <th>Founder & Contact</th>
                           <th>Pain Point & Notes</th>
                           <th>Score</th>
-                          <th>Status & Next Action</th>
+                          <th>Status</th>
+                          <th>Next Action</th>
                           <th>Outreach Date</th>
                           <th>Follow-up Date</th>
                           <th>Date Added</th>
@@ -858,7 +994,7 @@ export default function Home() {
                       <tbody>
                         {sortedLeads.length === 0 ? (
                           <tr>
-                            <td colSpan="11" style={{ textAlign: 'center', padding: '40px' }}>
+                            <td colSpan="13" style={{ textAlign: 'center', padding: '40px' }}>
                               <i className="fa-solid fa-folder-open" style={{ fontSize: '32px', color: 'var(--text-dim)' }}></i>
                               <p style={{ marginTop: '10px', color: '#64748b' }}>No leads found matching current filter criteria.</p>
                             </td>
@@ -871,12 +1007,22 @@ export default function Home() {
                             const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
                             const scoreIconClass = score >= 8 ? 'fa-solid fa-fire' : score >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
 
-                            const followStatus = getFollowUpStatus(lead.follow_up_dates || lead.reachout_date);
+                            const followStatus = getFollowUpStatus(lead.follow_up_dates);
                             const rowHighlightClass = followStatus ? followStatus.rowClass : '';
                             const notesText = lead.pain_point || lead.notes || '';
+                            const leadId = lead._id || lead.id;
+                            const isSelected = selectedLeadIds.includes(leadId);
 
                             return (
-                              <tr key={lead._id || lead.id} className={rowHighlightClass}>
+                              <tr key={leadId} className={`${rowHighlightClass} ${isSelected ? 'row-selected' : ''}`} style={isSelected ? { background: '#eef2ff' } : {}}>
+                                <td style={{ textAlign: 'center' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => toggleSelectLead(leadId)}
+                                    style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#4f46e5' }}
+                                  />
+                                </td>
                                 <td style={{ fontWeight: 700, color: 'var(--text-dim)' }}>{index + 1}</td>
                                 <td>
                                   <div className="company-cell">
@@ -913,7 +1059,16 @@ export default function Home() {
                                 <td>
                                   <span className="status-pill status-new">{lead.status || 'New'}</span>
                                   {lead.new_status && <div style={{ fontSize: '11px', color: '#0369a1', fontWeight: 600, marginTop: '2px' }}>{lead.new_status}</div>}
-                                  {lead.next_action && <div style={{ fontSize: '11px', marginTop: '4px', color: '#475569' }}><i className="fa-solid fa-arrow-right"></i> {lead.next_action}</div>}
+                                </td>
+                                <td>
+                                  {lead.next_action ? (
+                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <i className="fa-solid fa-arrow-right" style={{ color: '#4f46e5', fontSize: '11px' }}></i>
+                                      <span>{lead.next_action}</span>
+                                    </div>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
+                                  )}
                                 </td>
                                 <td>
                                   {lead.reachout_date ? (
@@ -957,7 +1112,11 @@ export default function Home() {
                                 </td>
                                 <td>
                                   <div className="action-btns">
-                                    {/* FEATURE 1: 1-Click Reschedule Action Button */}
+                                    {/* Mark Follow-up Complete Button */}
+                                    <button className="icon-btn" style={{ color: '#10b981', borderColor: '#a7f3d0', background: '#ecfdf5' }} onClick={() => handleMarkFollowedUp(lead)} title="Mark Follow-up Completed">
+                                      <i className="fa-solid fa-circle-check"></i>
+                                    </button>
+                                    {/* 1-Click Reschedule Action Button */}
                                     <button className="icon-btn" onClick={() => openRescheduleModal(lead)} title="Reschedule Follow-up in 1 Click">
                                       <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i>
                                     </button>
@@ -987,7 +1146,7 @@ export default function Home() {
                         const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
                         const scoreIconClass = score >= 8 ? 'fa-solid fa-fire' : score >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
 
-                        const followStatus = getFollowUpStatus(lead.follow_up_dates || lead.reachout_date);
+                        const followStatus = getFollowUpStatus(lead.follow_up_dates);
                         const notesText = lead.pain_point || lead.notes || '';
 
                         return (
@@ -1007,7 +1166,20 @@ export default function Home() {
                               </div>
                               <div className="mobile-lead-card-row">
                                 <span className="label">Status:</span>
-                                <span className="status-pill">{lead.status || 'New'}</span>
+                                <div style={{ textAlign: 'right' }}>
+                                  <span className="status-pill">{lead.status || 'New'}</span>
+                                  {lead.new_status && <div style={{ fontSize: '10px', color: '#0369a1', fontWeight: 600, marginTop: '2px' }}>{lead.new_status}</div>}
+                                </div>
+                              </div>
+                              <div className="mobile-lead-card-row">
+                                <span className="label">Next Action:</span>
+                                {lead.next_action ? (
+                                  <span style={{ fontSize: '12px', fontWeight: 700, color: '#4f46e5' }}>
+                                    <i className="fa-solid fa-arrow-right"></i> {lead.next_action}
+                                  </span>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: '12px' }}>None</span>
+                                )}
                               </div>
                               {lead.follow_up_dates && (
                                 <div className="mobile-lead-card-row">
@@ -1036,6 +1208,9 @@ export default function Home() {
                             </div>
 
                             <div style={{ display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
+                              <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center', color: '#10b981', borderColor: '#a7f3d0' }} onClick={() => handleMarkFollowedUp(lead)}>
+                                <i className="fa-solid fa-circle-check"></i> Done
+                              </button>
                               <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openRescheduleModal(lead)}>
                                 <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i> Reschedule
                               </button>
@@ -1443,6 +1618,216 @@ export default function Home() {
             </div>
           </div>
         )}
+        {/* FEATURE 3: FLOATING BULK BATCH ACTIONS BAR */}
+        {selectedLeadIds.length > 0 && (
+          <div className="bulk-actions-bar">
+            <span className="bulk-count-pill">{selectedLeadIds.length} Selected</span>
+
+            {/* Batch Status Change */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <select
+                value={bulkStatusInput}
+                onChange={(e) => setBulkStatusInput(e.target.value)}
+                className="bulk-select-input"
+              >
+                <option value="">Change Status To...</option>
+                <option value="New">New</option>
+                <option value="Contacted">Contacted</option>
+                <option value="Meeting Scheduled">Meeting Scheduled</option>
+                <option value="Qualified">Qualified</option>
+                <option value="Nurture">Nurture</option>
+                <option value="Not Interested">Not Interested</option>
+                <option value="Won">Won</option>
+                <option value="Lost">Lost</option>
+              </select>
+              <button
+                className="btn btn-primary"
+                style={{ padding: '6px 12px', fontSize: '11px' }}
+                disabled={!bulkStatusInput || bulkExecuting}
+                onClick={() => handleExecuteBulkAction('update_status', { status: bulkStatusInput })}
+              >
+                Apply Status
+              </button>
+            </div>
+
+            {/* Batch Reschedule Date */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <input
+                type="date"
+                value={bulkRescheduleDate}
+                onChange={(e) => setBulkRescheduleDate(e.target.value)}
+                className="bulk-select-input"
+              />
+              <button
+                className="btn btn-primary"
+                style={{ padding: '6px 12px', fontSize: '11px', background: '#0284c7' }}
+                disabled={!bulkRescheduleDate || bulkExecuting}
+                onClick={() => handleExecuteBulkAction('reschedule', { follow_up_dates: bulkRescheduleDate })}
+              >
+                Apply Date
+              </button>
+            </div>
+
+            {/* Batch Delete */}
+            <button
+              className="btn btn-outline"
+              style={{ padding: '6px 12px', fontSize: '11px', color: '#ef4444', borderColor: '#fca5a5', background: '#fef2f2' }}
+              disabled={bulkExecuting}
+              onClick={() => handleExecuteBulkAction('delete')}
+            >
+              <i className="fa-solid fa-trash"></i> Delete Selected
+            </button>
+
+            {/* Deselect All */}
+            <button
+              onClick={() => setSelectedLeadIds([])}
+              style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer', marginLeft: 'auto' }}
+              title="Deselect All"
+            >
+              &times;
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Visual Sales Kanban Board View Component
+function KanbanView({ leads, onMoveStage, onEdit, onReschedule, onMarkDone }) {
+  const columns = [
+    { id: 'New', title: 'New Leads', icon: 'fa-solid fa-star', color: '#4f46e5', bg: '#e0e7ff' },
+    { id: 'Contacted', title: 'Contacted & Engaged', icon: 'fa-solid fa-comments', color: '#0284c7', bg: '#e0f2fe' },
+    { id: 'Meeting Scheduled', title: 'Meeting Scheduled', icon: 'fa-solid fa-handshake', color: '#10b981', bg: '#d1fae5' },
+    { id: 'Qualified', title: 'Qualified Opportunities', icon: 'fa-solid fa-award', color: '#7e22ce', bg: '#f3e8ff' },
+    { id: 'Won', title: 'Deals Closed (Won)', icon: 'fa-solid fa-trophy', color: '#059669', bg: '#ecfdf5' },
+  ];
+
+  const getLeadsForColumn = (colId) => {
+    return leads.filter(l => {
+      const st = (l.status || '').toLowerCase();
+      const nst = (l.new_status || '').toLowerCase();
+      const act = (l.next_action || '').toLowerCase();
+      const notes = (l.notes || '').toLowerCase();
+
+      if (colId === 'Meeting Scheduled') {
+        return st.includes('meeting') || nst.includes('meeting') || act.includes('meeting') || notes.includes('meeting');
+      } else if (colId === 'New') {
+        return st === 'new';
+      } else if (colId === 'Contacted') {
+        return st === 'contacted';
+      } else if (colId === 'Qualified') {
+        return st === 'qualified';
+      } else if (colId === 'Won') {
+        return st === 'won';
+      }
+      return false;
+    });
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <i className="fa-solid fa-table-columns" style={{ color: '#4f46e5' }}></i> Visual Sales Kanban Pipeline
+        </h2>
+        <span style={{ fontSize: '13px', color: '#64748b' }}>Move deal cards across pipeline stages</span>
+      </div>
+
+      <div className="kanban-board-container">
+        {columns.map(col => {
+          const colLeads = getLeadsForColumn(col.id);
+          return (
+            <div key={col.id} className="kanban-column">
+              <div className="kanban-column-header">
+                <div className="kanban-column-title">
+                  <i className={col.icon} style={{ color: col.color }}></i>
+                  <span>{col.title}</span>
+                </div>
+                <span className="kanban-count-badge" style={{ background: col.bg, color: col.color }}>
+                  {colLeads.length}
+                </span>
+              </div>
+
+              <div className="kanban-cards-wrapper">
+                {colLeads.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px 10px', color: '#94a3b8', fontSize: '12px', border: '2px dashed #e2e8f0', borderRadius: '12px' }}>
+                    No leads in this stage
+                  </div>
+                ) : (
+                  colLeads.map(lead => {
+                    let score = lead.score_of_client || 5;
+                    if (score > 10) score = Math.min(Math.max(Math.round(score / 10), 1), 10);
+                    const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
+                    const scoreIconClass = score >= 8 ? 'fa-solid fa-fire' : score >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
+
+                    return (
+                      <div key={lead._id || lead.id} className="kanban-card">
+                        <div className="kanban-card-top">
+                          <div>
+                            <strong style={{ fontSize: '14px', color: '#0f172a', display: 'block' }}>{lead.company}</strong>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}><i className="fa-solid fa-user-tie"></i> {lead.founder || 'N/A'}</span>
+                          </div>
+
+                          <select
+                            value={lead.status || 'New'}
+                            onChange={(e) => onMoveStage(lead._id || lead.id, e.target.value)}
+                            className="kanban-move-select"
+                            title="Move Lead to Stage"
+                          >
+                            <option value="New">Move to New</option>
+                            <option value="Contacted">Move to Contacted</option>
+                            <option value="Meeting Scheduled">Move to Meeting</option>
+                            <option value="Qualified">Move to Qualified</option>
+                            <option value="Nurture">Move to Nurture</option>
+                            <option value="Won">Move to Won</option>
+                            <option value="Lost">Move to Lost</option>
+                          </select>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px' }}>
+                          <span className={`score-badge ${scoreClass}`} style={{ fontSize: '10px', padding: '2px 8px' }}>
+                            <i className={scoreIconClass}></i> {score}/10
+                          </span>
+                          <span style={{ color: '#0284c7', fontWeight: 600 }}>{lead.city || 'Direct'}</span>
+                        </div>
+
+                        {lead.follow_up_dates && (
+                          <div style={{ fontSize: '11px', color: '#d97706', background: '#fef3c7', padding: '4px 8px', borderRadius: '6px', fontWeight: 700 }}>
+                            <i className="fa-solid fa-clock"></i> Follow-up: {lead.follow_up_dates}
+                          </div>
+                        )}
+
+                        {lead.next_action && (
+                          <div style={{ fontSize: '11px', color: '#334155', fontWeight: 600 }}>
+                            <i className="fa-solid fa-arrow-right" style={{ color: '#4f46e5' }}></i> {lead.next_action}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: '6px', marginTop: '6px', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+                          <button className="icon-btn" style={{ width: '28px', height: '28px', fontSize: '11px', color: '#10b981', borderColor: '#a7f3d0', background: '#ecfdf5' }} onClick={() => onMarkDone(lead)} title="Mark Follow-up Completed">
+                            <i className="fa-solid fa-circle-check"></i>
+                          </button>
+                          <button className="icon-btn" style={{ width: '28px', height: '28px', fontSize: '11px' }} onClick={() => onReschedule(lead)} title="Reschedule Follow-up">
+                            <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i>
+                          </button>
+                          <button className="icon-btn" style={{ width: '28px', height: '28px', fontSize: '11px' }} onClick={() => onEdit(lead)} title="Edit Lead">
+                            <i className="fa-solid fa-pen-to-square"></i>
+                          </button>
+                          {lead.email && (
+                            <a href={`mailto:${lead.email}`} className="icon-btn" style={{ width: '28px', height: '28px', fontSize: '11px', textDecoration: 'none' }} title="Email Lead">
+                              <i className="fa-solid fa-envelope"></i>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1450,33 +1835,91 @@ export default function Home() {
 
 // Analytics Dashboard Helper
 function AnalyticsDashboard({ leads }) {
+  const [analyticsLeads, setAnalyticsLeads] = useState(leads || []);
   const [subTab, setSubTab] = useState('overview');
-  const total = leads.length || 1;
 
-  const statusCounts = {
-    'New': leads.filter(l => (l.status || '').toLowerCase() === 'new').length,
-    'Contacted': leads.filter(l => (l.status || '').toLowerCase() === 'contacted').length,
-    'Meeting Scheduled': leads.filter(l => (l.status || '').toLowerCase().includes('meeting')).length,
-    'Qualified': leads.filter(l => (l.status || '').toLowerCase() === 'qualified').length,
-    'Nurture': leads.filter(l => (l.status || '').toLowerCase().includes('nurture') || (l.status || '').toLowerCase().includes('not interested')).length,
-    'Won': leads.filter(l => (l.status || '').toLowerCase() === 'won').length,
+  useEffect(() => {
+    // Fetch 100% complete real-time leads array directly from MongoDB
+    const loadRealtimeAnalytics = async () => {
+      try {
+        const res = await fetch('/api/leads?tab=all', {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('crm_token') || ''}`
+          }
+        });
+        const data = await res.json();
+        if (data.success && data.leads) {
+          setAnalyticsLeads(data.leads);
+        }
+      } catch (err) {
+        console.error('Analytics real-time load error:', err);
+      }
+    };
+    loadRealtimeAnalytics();
+  }, []);
+
+  const activeLeads = analyticsLeads.length > 0 ? analyticsLeads : leads;
+  const total = activeLeads.length || 1;
+
+  // Robust Score Extraction (handles numbers, strings like "8", "8/10", missing scores)
+  const getScore = (lead) => {
+    let raw = lead.score_of_client;
+    if (raw === undefined || raw === null || raw === '') return 5;
+    if (typeof raw === 'number') {
+      if (raw > 10) return Math.min(Math.max(Math.round(raw / 10), 1), 10);
+      return raw;
+    }
+    const str = String(raw).trim();
+    const match = str.match(/\d+/);
+    if (!match) return 5;
+    let val = parseInt(match[0], 10);
+    if (val > 10) val = Math.min(Math.max(Math.round(val / 10), 1), 10);
+    return val;
   };
 
-  const hotLeads = leads.filter(l => (l.score_of_client || 5) >= 8).length;
-  const warmLeads = leads.filter(l => (l.score_of_client || 5) >= 5 && (l.score_of_client || 5) < 8).length;
-  const coldLeads = leads.filter(l => (l.score_of_client || 5) < 5).length;
+  // Scan across status, new_status, next_action, and notes for Meetings
+  const isMeeting = (l) => {
+    const st = (l.status || '').toLowerCase();
+    const nst = (l.new_status || '').toLowerCase();
+    const act = (l.next_action || '').toLowerCase();
+    const notes = (l.notes || '').toLowerCase();
+    return st.includes('meeting') || nst.includes('meeting') || act.includes('meeting') || notes.includes('meeting');
+  };
+
+  // Scan across status, new_status, and notes for Nurture
+  const isNurture = (l) => {
+    const st = (l.status || '').toLowerCase();
+    const nst = (l.new_status || '').toLowerCase();
+    const notes = (l.notes || '').toLowerCase();
+    return st.includes('nurture') || nst.includes('nurture') || st.includes('not interested') || nst.includes('not interested') || notes.includes('not interested');
+  };
+
+  const statusCounts = {
+    'New': activeLeads.filter(l => (l.status || '').toLowerCase() === 'new').length,
+    'Contacted': activeLeads.filter(l => (l.status || '').toLowerCase() === 'contacted').length,
+    'Meeting Scheduled': activeLeads.filter(isMeeting).length,
+    'Qualified': activeLeads.filter(l => (l.status || '').toLowerCase() === 'qualified').length,
+    'Nurture': activeLeads.filter(isNurture).length,
+    'Won': activeLeads.filter(l => (l.status || '').toLowerCase() === 'won').length,
+  };
+
+  const hotLeads = activeLeads.filter(l => getScore(l) >= 8).length;
+  const warmLeads = activeLeads.filter(l => getScore(l) >= 5 && getScore(l) < 8).length;
+  const coldLeads = activeLeads.filter(l => getScore(l) < 5).length;
 
   const hotPct = Math.round((hotLeads / total) * 100);
   const warmPct = Math.round((warmLeads / total) * 100);
   const coldPct = Math.round((coldLeads / total) * 100);
 
-  const totalLeadsCount = leads.length;
-  const contactedCount = leads.filter(l => l.status && l.status !== 'New').length;
-  const meetingsCount = statusCounts['Meeting Scheduled'];
+  const totalLeadsCount = activeLeads.length;
+  const contactedCount = activeLeads.filter(l => l.status && l.status !== 'New').length;
+  const meetingsCount = activeLeads.filter(isMeeting).length;
   const wonCount = statusCounts['Won'];
+  const nurtureCount = activeLeads.filter(isNurture).length;
 
   const dateCountsMap = {};
-  leads.forEach(l => {
+  activeLeads.forEach(l => {
     const d = l.follow_up_dates || l.reachout_date || l.date_added;
     if (d) {
       const iso = normalizeToISO(d) || d;
@@ -1488,7 +1931,7 @@ function AnalyticsDashboard({ leads }) {
 
   const sourceMap = {};
   const cityMap = {};
-  leads.forEach(l => {
+  activeLeads.forEach(l => {
     const src = l.source || 'Direct';
     sourceMap[src] = (sourceMap[src] || 0) + 1;
 
@@ -1531,7 +1974,7 @@ function AnalyticsDashboard({ leads }) {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }}>
+      <div className="analytics-kpi-grid">
         <div className="glass" style={{ padding: '20px', background: '#fff' }}>
           <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Hot Prospects Ratio</span>
           <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#dc2626', marginTop: '4px' }}>
@@ -1551,7 +1994,7 @@ function AnalyticsDashboard({ leads }) {
         <div className="glass" style={{ padding: '20px', background: '#fff' }}>
           <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Active Nurture Pipeline</span>
           <h3 style={{ fontSize: '24px', fontWeight: 800, color: '#d97706', marginTop: '4px' }}>
-            <i className="fa-solid fa-seedling"></i> {statusCounts['Nurture']}
+            <i className="fa-solid fa-seedling"></i> {nurtureCount}
           </h3>
           <span style={{ fontSize: '11px', color: '#94a3b8' }}>Auto-Nurtured Prospects</span>
         </div>
