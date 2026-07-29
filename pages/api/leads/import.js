@@ -1,6 +1,7 @@
 import dbConnect from '../../../lib/dbConnect';
 import Lead from '../../../models/Lead';
 import cacheService from '../../../lib/cacheService';
+import { normalizeToISO } from '../../../lib/reminderService';
 import xlsx from 'xlsx';
 import formidable from 'formidable';
 import fs from 'fs';
@@ -11,15 +12,20 @@ export const config = {
   },
 };
 
-function formatExcelDate(val) {
-  if (!val) return '';
-  if (typeof val === 'number') {
-    const date = new Date(Math.round((val - 25569) * 86400 * 1000));
-    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+// Fuzzy Header Extraction Helper
+function getRowValue(row, possibleKeys) {
+  if (!row || typeof row !== 'object') return '';
+  const rowKeys = Object.keys(row);
+  for (const targetKey of possibleKeys) {
+    const targetNorm = targetKey.toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (const key of rowKeys) {
+      const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (keyNorm === targetNorm && row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== '') {
+        return row[key];
+      }
+    }
   }
-  const parsed = new Date(val);
-  if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
-  return String(val);
+  return '';
 }
 
 export default async function handler(req, res) {
@@ -41,28 +47,36 @@ export default async function handler(req, res) {
         const rawRows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' });
 
         const docs = rawRows.map(row => {
-          const rawScore = parseInt(row['score of client  '] || row['score_of_client'], 10);
+          const rawScoreStr = getRowValue(row, ['Score of client', 'score_of_client', 'Client Score', 'Score', 'Rating']);
+          let rawScore = parseInt(rawScoreStr, 10);
+          if (!isNaN(rawScore) && rawScore > 10) {
+            rawScore = Math.min(Math.max(Math.round(rawScore / 10), 1), 10);
+          }
           const scoreVal = (!isNaN(rawScore) && rawScore > 0) ? rawScore : undefined;
 
+          const rawReachout = getRowValue(row, ['outreach date', 'outreach_date', 'reachout date', 'reachout_date', 'reach out date', 'date of outreach', 'contacted date']);
+          const rawFollowup = getRowValue(row, ['Follow up date', 'follow_up_dates', 'Follow up dates', 'Followup Date', 'Follow-up Date', 'Next Followup', 'Followup', 'Follow up']);
+          const rawDateAdded = getRowValue(row, ['Date Added', 'date_added', 'Added Date', 'Created Date', 'Date']);
+
           return {
-            company: row['Company'] || row['company'] || 'Unnamed',
-            city: row['City'] || row['city'] || '',
-            locations: row['Locations'] || row['locations'] || '',
-            founder: row['Founder'] || row['founder'] || '',
-            linkedin: row['LinkedIn'] || row['linkedin'] || '',
-            contact: String(row['Phone'] || row['Contact'] || row['contact'] || ''),
-            email: row['Email'] || row['email'] || '',
-            pain_point: row['Pain Point'] || row['pain point'] || '',
-            source: row['Source'] || row['source'] || 'Direct',
-            date_added: formatExcelDate(row['Date Added']) || new Date().toISOString().split('T')[0],
-            assigned_to: row['Assigned To'] || 'Sales Team',
-            status: row['Status'] || row['status'] || 'New',
-            notes: row['Notes'] || '',
+            company: String(getRowValue(row, ['Company', 'company', 'Company Name', 'Business Name', 'Firm']) || 'Unnamed'),
+            city: String(getRowValue(row, ['City', 'city', 'Location', 'Town']) || ''),
+            locations: String(getRowValue(row, ['Locations', 'locations', 'Address', 'Location / Address']) || ''),
+            founder: String(getRowValue(row, ['Founder', 'founder', 'Founder Name', 'Client Name', 'Name']) || ''),
+            linkedin: String(getRowValue(row, ['LinkedIn', 'linkedin', 'LinkedIn Profile', 'LinkedIn URL']) || ''),
+            contact: String(getRowValue(row, ['Phone', 'Contact', 'contact', 'Mobile', 'Phone Number']) || ''),
+            email: String(getRowValue(row, ['Email', 'email', 'Email Address', 'Mail']) || ''),
+            pain_point: String(getRowValue(row, ['Pain Point', 'pain_point', 'Pain Points', 'Requirement', 'Problem']) || ''),
+            source: String(getRowValue(row, ['Source', 'source', 'Lead Source', 'Channel']) || 'Direct'),
+            date_added: normalizeToISO(rawDateAdded) || new Date().toISOString().split('T')[0],
+            assigned_to: String(getRowValue(row, ['Assigned To', 'assigned_to', 'Agent', 'Sales Rep', 'Owner']) || 'Sales Team'),
+            status: String(getRowValue(row, ['Status', 'status', 'Lead Status', 'Stage']) || 'New'),
+            notes: String(getRowValue(row, ['Notes', 'notes', 'Note', 'Comments', 'Remarks', 'History']) || ''),
             score_of_client: scoreVal,
-            reachout_date: formatExcelDate(row['outreach date '] || row['Reachout Date']),
-            new_status: row['New status'] || '',
-            next_action: row['Next Action'] || '',
-            follow_up_dates: formatExcelDate(row['Follow up date'] || row['Follow up dates'])
+            reachout_date: normalizeToISO(rawReachout) || '',
+            new_status: String(getRowValue(row, ['New status', 'new_status', 'Sub Status', 'Sub_Status']) || ''),
+            next_action: String(getRowValue(row, ['Next Action', 'next_action', 'Action', 'Action Item']) || ''),
+            follow_up_dates: normalizeToISO(rawFollowup) || ''
           };
         });
 

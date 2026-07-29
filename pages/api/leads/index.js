@@ -155,7 +155,12 @@ export default async function handler(req, res) {
     }
   } else if (req.method === 'POST') {
     try {
-      const lead = new Lead(req.body);
+      const payload = { ...req.body };
+      if (payload.follow_up_dates) payload.follow_up_dates = normalizeToISO(payload.follow_up_dates) || payload.follow_up_dates;
+      if (payload.reachout_date) payload.reachout_date = normalizeToISO(payload.reachout_date) || payload.reachout_date;
+      if (payload.date_added) payload.date_added = normalizeToISO(payload.date_added) || payload.date_added;
+
+      const lead = new Lead(payload);
       await lead.save();
 
       cacheService.flush();
