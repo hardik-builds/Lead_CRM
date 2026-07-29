@@ -43,19 +43,40 @@ function getFollowUpStatus(dateStr) {
   }
 }
 
-// WhatsApp Direct URL Generator with 91 Country Code Formatting (Clean https://wa.me/91XXXXXXXXXX without pre-filled text)
-function getWhatsAppUrl(contact) {
-  if (!contact) return null;
-  let digits = String(contact).replace(/\D/g, '');
-  if (!digits) return null;
+// Parse all valid phone numbers from multi-number contact strings (e.g. "9876543210 / 9123456789")
+function parsePhoneNumbers(contactStr) {
+  if (!contactStr) return [];
+  const parts = String(contactStr).split(/[,/|\n;]|\bor\b|\band\b/i);
+  const list = [];
 
-  if (digits.length === 10) {
-    digits = '91' + digits;
-  } else if (digits.length === 11 && digits.startsWith('0')) {
-    digits = '91' + digits.substring(1);
+  for (let part of parts) {
+    let digits = part.replace(/\D/g, '');
+    if (digits.length >= 10) {
+      if (digits.length === 10) {
+        digits = '91' + digits;
+      } else if (digits.length === 11 && digits.startsWith('0')) {
+        digits = '91' + digits.substring(1);
+      } else if (digits.length > 12 && digits.startsWith('91')) {
+        digits = digits.slice(0, 12);
+      }
+      if (!list.includes(digits) && (digits.length === 12 || digits.length === 10)) {
+        list.push(digits);
+      }
+    }
   }
+  return list;
+}
 
-  return `https://wa.me/${digits}`;
+// Get array of WhatsApp URLs for multi-number contacts
+function getWhatsAppUrls(contact) {
+  const numbers = parsePhoneNumbers(contact);
+  return numbers.map(num => `https://wa.me/${num}`);
+}
+
+// Primary WhatsApp URL
+function getWhatsAppUrl(contact) {
+  const urls = getWhatsAppUrls(contact);
+  return urls.length > 0 ? urls[0] : null;
 }
 
 export default function Home() {
@@ -1052,18 +1073,20 @@ export default function Home() {
                                     {lead.contact && (
                                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                                         <span className="contact-link contact-text"><i className="fa-solid fa-phone"></i> {lead.contact}</span>
-                                        {getWhatsAppUrl(lead.contact, lead.founder, lead.company) && (
+                                        {getWhatsAppUrls(lead.contact).map((waUrl, waIdx) => (
                                           <a
-                                            href={getWhatsAppUrl(lead.contact, lead.founder, lead.company)}
+                                            key={waIdx}
+                                            href={waUrl}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="contact-link"
                                             style={{ color: '#25D366', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px', textDecoration: 'none' }}
-                                            title="Chat on WhatsApp"
+                                            title={`Chat on WhatsApp (${waIdx + 1})`}
                                           >
-                                            <i className="fa-brands fa-whatsapp" style={{ fontSize: '13px' }}></i> WhatsApp
+                                            <i className="fa-brands fa-whatsapp" style={{ fontSize: '13px' }}></i>
+                                            {getWhatsAppUrls(lead.contact).length > 1 ? `WA ${waIdx + 1}` : 'WhatsApp'}
                                           </a>
-                                        )}
+                                        ))}
                                       </div>
                                     )}
                                   </div>
