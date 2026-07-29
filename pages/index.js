@@ -43,6 +43,21 @@ function getFollowUpStatus(dateStr) {
   }
 }
 
+// WhatsApp Direct URL Generator with 91 Country Code Formatting (Clean https://wa.me/91XXXXXXXXXX without pre-filled text)
+function getWhatsAppUrl(contact) {
+  if (!contact) return null;
+  let digits = String(contact).replace(/\D/g, '');
+  if (!digits) return null;
+
+  if (digits.length === 10) {
+    digits = '91' + digits;
+  } else if (digits.length === 11 && digits.startsWith('0')) {
+    digits = '91' + digits.substring(1);
+  }
+
+  return `https://wa.me/${digits}`;
+}
+
 export default function Home() {
   // Authentication State
   const [authenticated, setAuthenticated] = useState(false);
@@ -1034,7 +1049,23 @@ export default function Home() {
                                   <div className="founder-cell">
                                     <span className="founder-name"><i className="fa-solid fa-user-tie"></i> {lead.founder || 'N/A'}</span>
                                     {lead.email && <a href={`mailto:${lead.email}`} className="contact-link contact-text"><i className="fa-solid fa-envelope"></i> {lead.email}</a>}
-                                    {lead.contact && <span className="contact-link contact-text"><i className="fa-solid fa-phone"></i> {lead.contact}</span>}
+                                    {lead.contact && (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                        <span className="contact-link contact-text"><i className="fa-solid fa-phone"></i> {lead.contact}</span>
+                                        {getWhatsAppUrl(lead.contact, lead.founder, lead.company) && (
+                                          <a
+                                            href={getWhatsAppUrl(lead.contact, lead.founder, lead.company)}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="contact-link"
+                                            style={{ color: '#25D366', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '3px', textDecoration: 'none' }}
+                                            title="Chat on WhatsApp"
+                                          >
+                                            <i className="fa-brands fa-whatsapp" style={{ fontSize: '13px' }}></i> WhatsApp
+                                          </a>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
                                 </td>
                                 <td>
@@ -1122,6 +1153,18 @@ export default function Home() {
                                     </button>
                                     <button className="icon-btn" onClick={() => openEdit(lead)} title="Edit Lead"><i className="fa-solid fa-pen-to-square"></i></button>
                                     {lead.email && <a href={`mailto:${lead.email}`} className="icon-btn" title="Send Email"><i className="fa-solid fa-envelope"></i></a>}
+                                    {getWhatsAppUrl(lead.contact, lead.founder, lead.company) && (
+                                      <a
+                                        href={getWhatsAppUrl(lead.contact, lead.founder, lead.company)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="icon-btn"
+                                        style={{ color: '#25D366', borderColor: '#86efac', background: '#f0fdf4', textDecoration: 'none' }}
+                                        title="Chat on WhatsApp"
+                                      >
+                                        <i className="fa-brands fa-whatsapp" style={{ fontSize: '15px' }}></i>
+                                      </a>
+                                    )}
                                     <button className="icon-btn delete-btn" onClick={() => handleDelete(lead._id || lead.id)} title="Delete Lead"><i className="fa-solid fa-trash"></i></button>
                                   </div>
                                 </td>
@@ -1218,8 +1261,20 @@ export default function Home() {
                                 <i className="fa-solid fa-pen-to-square"></i>
                               </button>
                               {lead.email && (
-                                <a href={`mailto:${lead.email}`} className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', textDecoration: 'none' }}>
+                                <a href={`mailto:${lead.email}`} className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', textDecoration: 'none' }} title="Send Email">
                                   <i className="fa-solid fa-envelope"></i>
+                                </a>
+                              )}
+                              {getWhatsAppUrl(lead.contact, lead.founder, lead.company) && (
+                                <a
+                                  href={getWhatsAppUrl(lead.contact, lead.founder, lead.company)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-outline"
+                                  style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#15803d', borderColor: '#86efac', background: '#f0fdf4', textDecoration: 'none' }}
+                                  title="Chat on WhatsApp"
+                                >
+                                  <i className="fa-brands fa-whatsapp" style={{ color: '#25D366', fontSize: '16px' }}></i>
                                 </a>
                               )}
                               <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => handleDelete(lead._id || lead.id)}>
@@ -1817,6 +1872,18 @@ function KanbanView({ leads, onMoveStage, onEdit, onReschedule, onMarkDone }) {
                           {lead.email && (
                             <a href={`mailto:${lead.email}`} className="icon-btn" style={{ width: '28px', height: '28px', fontSize: '11px', textDecoration: 'none' }} title="Email Lead">
                               <i className="fa-solid fa-envelope"></i>
+                            </a>
+                          )}
+                          {getWhatsAppUrl(lead.contact, lead.founder, lead.company) && (
+                            <a
+                              href={getWhatsAppUrl(lead.contact, lead.founder, lead.company)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="icon-btn"
+                              style={{ width: '28px', height: '28px', fontSize: '11px', color: '#25D366', borderColor: '#86efac', background: '#f0fdf4', textDecoration: 'none' }}
+                              title="Chat on WhatsApp"
+                            >
+                              <i className="fa-brands fa-whatsapp"></i>
                             </a>
                           )}
                         </div>
