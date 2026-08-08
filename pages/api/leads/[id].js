@@ -1,7 +1,7 @@
 import dbConnect from '../../../lib/dbConnect';
 import Lead from '../../../models/Lead';
 import cacheService from '../../../lib/cacheService';
-import { checkAndSendReminders, normalizeToISO } from '../../../lib/reminderService';
+import { checkAndSendReminders, normalizeToISO, normalizeToIndianDate } from '../../../lib/reminderService';
 import { verifyRequestAuth } from '../../../lib/auth';
 
 export default async function handler(req, res) {
@@ -22,13 +22,13 @@ export default async function handler(req, res) {
 
       const updateData = { ...req.body };
       if (updateData.follow_up_dates !== undefined && updateData.follow_up_dates !== '') {
-        updateData.follow_up_dates = normalizeToISO(updateData.follow_up_dates) || updateData.follow_up_dates;
+        updateData.follow_up_dates = normalizeToIndianDate(updateData.follow_up_dates) || updateData.follow_up_dates;
       }
       if (updateData.reachout_date !== undefined && updateData.reachout_date !== '') {
-        updateData.reachout_date = normalizeToISO(updateData.reachout_date) || updateData.reachout_date;
+        updateData.reachout_date = normalizeToIndianDate(updateData.reachout_date) || updateData.reachout_date;
       }
       if (updateData.date_added !== undefined && updateData.date_added !== '') {
-        updateData.date_added = normalizeToISO(updateData.date_added) || updateData.date_added;
+        updateData.date_added = normalizeToIndianDate(updateData.date_added) || updateData.date_added;
       }
 
       // Build activity log entry if follow-up date or status changed

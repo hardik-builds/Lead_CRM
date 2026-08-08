@@ -1,7 +1,7 @@
 import dbConnect from '../../../lib/dbConnect';
 import Lead from '../../../models/Lead';
 import cacheService from '../../../lib/cacheService';
-import { normalizeToISO } from '../../../lib/reminderService';
+import { normalizeToIndianDate } from '../../../lib/reminderService';
 import xlsx from 'xlsx';
 import formidable from 'formidable';
 import fs from 'fs';
@@ -26,6 +26,13 @@ function getRowValue(row, possibleKeys) {
     }
   }
   return '';
+}
+
+function getTodayIndianStr() {
+  const now = new Date();
+  const d = String(now.getDate()).padStart(2, '0');
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  return `${d}/${m}/${now.getFullYear()}`;
 }
 
 export default async function handler(req, res) {
@@ -64,15 +71,15 @@ export default async function handler(req, res) {
             email: String(getRowValue(row, ['Email', 'email', 'Email Address', 'Mail']) || ''),
             pain_point: String(getRowValue(row, ['Pain Point', 'pain_point', 'Pain Points', 'Requirement', 'Problem']) || ''),
             source: String(getRowValue(row, ['Source', 'source', 'Lead Source', 'Channel']) || 'Direct'),
-            date_added: normalizeToISO(rawDateAdded) || new Date().toISOString().split('T')[0],
+            date_added: normalizeToIndianDate(rawDateAdded) || getTodayIndianStr(),
             assigned_to: String(getRowValue(row, ['Assigned To', 'assigned_to', 'Agent', 'Sales Rep', 'Owner']) || 'Sales Team'),
             status: String(getRowValue(row, ['Status', 'status', 'Lead Status', 'Stage']) || 'New'),
             notes: String(getRowValue(row, ['Notes', 'notes', 'Note', 'Comments', 'Remarks', 'History']) || ''),
             score_of_client: scoreVal,
-            reachout_date: normalizeToISO(rawReachout) || '',
+            reachout_date: normalizeToIndianDate(rawReachout) || '',
             new_status: String(getRowValue(row, ['New status', 'new_status', 'Sub Status', 'Sub_Status']) || ''),
             next_action: String(getRowValue(row, ['Next Action', 'next_action', 'Action', 'Action Item']) || ''),
-            follow_up_dates: normalizeToISO(rawFollowup) || ''
+            follow_up_dates: normalizeToIndianDate(rawFollowup) || ''
           };
         });
 

@@ -1,45 +1,74 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 
-// Helper: Normalize US Mode (MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY) to ISO YYYY-MM-DD
-function normalizeToISO(str) {
-  if (!str) return null;
-  if (typeof str === 'number') {
-    const date = new Date(Math.round((str - 25569) * 86400 * 1000));
-    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
+// Helper: Normalize ANY date to Indian DD/MM/YYYY format
+function normalizeToIndianDate(val) {
+  if (!val) return '';
+  if (typeof val === 'number') {
+    const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+    if (!isNaN(date.getTime())) {
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
   }
-  let val = String(str).trim();
-  if (!val) return null;
+  let str = String(val).trim();
+  if (!str) return '';
 
   // 1. Match YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
-  const ymdMatch = val.match(/^(\d{4})[-/. ](\d{1,2})[-/. ](\d{1,2})/);
+  const ymdMatch = str.match(/^(\d{4})[-/. ](\d{1,2})[-/. ](\d{1,2})/);
   if (ymdMatch) {
-    const year = ymdMatch[1];
-    const month = ymdMatch[2].padStart(2, '0');
-    const day = ymdMatch[3].padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    const y = ymdMatch[1];
+    const m = ymdMatch[2].padStart(2, '0');
+    const d = ymdMatch[3].padStart(2, '0');
+    return `${d}/${m}/${y}`;
   }
 
-  // 2. US Mode: MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY (Month First e.g. 8/7/2026 -> 2026-08-07)
-  const mdyMatch = val.match(/^(\d{1,2})[-/. ](\d{1,2})[-/. ](\d{4})/);
-  if (mdyMatch) {
-    let p1 = parseInt(mdyMatch[1], 10); // Month in US Mode
-    let p2 = parseInt(mdyMatch[2], 10); // Day in US Mode
-    let year = mdyMatch[3];
-    let month = p1;
-    let day = p2;
+  // 2. Indian DD/MM/YYYY mode
+  const dmyMatch = str.match(/^(\d{1,2})[-/. ](\d{1,2})[-/. ](\d{4})/);
+  if (dmyMatch) {
+    let p1 = parseInt(dmyMatch[1], 10);
+    let p2 = parseInt(dmyMatch[2], 10);
+    let year = dmyMatch[3];
+    let day = p1;
+    let month = p2;
 
-    // Safety swap if p1 > 12 (e.g. 28/07/2026)
-    if (p1 > 12) {
-      day = p1;
-      month = p2;
+    if (p1 <= 12 && p2 > 12) {
+      day = p2;
+      month = p1;
     }
 
-    const mStr = String(month).padStart(2, '0');
     const dStr = String(day).padStart(2, '0');
-    return `${year}-${mStr}-${dStr}`;
+    const mStr = String(month).padStart(2, '0');
+    return `${dStr}/${mStr}/${year}`;
   }
 
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    const d = String(parsed.getDate()).padStart(2, '0');
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const y = parsed.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+  return str;
+}
+
+// Helper: Convert DD/MM/YYYY or YYYY-MM-DD to ISO YYYY-MM-DD for accurate comparison logic
+function normalizeToISO(str) {
+  if (!str) return null;
+  const val = String(str).trim();
+  const dmyMatch = val.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dmyMatch) {
+    const d = dmyMatch[1].padStart(2, '0');
+    const m = dmyMatch[2].padStart(2, '0');
+    const y = dmyMatch[3];
+    return `${y}-${m}-${d}`;
+  }
+  const ymdMatch = val.match(/^(\d{4})[-/. ](\d{1,2})[-/. ](\d{1,2})/);
+  if (ymdMatch) {
+    return `${ymdMatch[1]}-${ymdMatch[2].padStart(2, '0')}-${ymdMatch[3].padStart(2, '0')}`;
+  }
   const parsed = new Date(val);
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().split('T')[0];
