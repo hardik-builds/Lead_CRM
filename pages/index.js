@@ -530,13 +530,15 @@ export default function Home() {
   const handleApplyReschedule = async (daysToAdd, customTargetDate = null) => {
     if (!reschedulingLead) return;
 
-    let targetDateISO = '';
+    let targetDateFormatted = '';
     if (customTargetDate) {
-      targetDateISO = customTargetDate;
+      targetDateFormatted = normalizeToIndianDate(customTargetDate) || customTargetDate;
     } else {
       const baseDate = new Date();
       baseDate.setDate(baseDate.getDate() + daysToAdd);
-      targetDateISO = baseDate.toISOString().split('T')[0];
+      const d = String(baseDate.getDate()).padStart(2, '0');
+      const m = String(baseDate.getMonth() + 1).padStart(2, '0');
+      targetDateFormatted = `${d}/${m}/${baseDate.getFullYear()}`;
     }
 
     try {
@@ -544,7 +546,7 @@ export default function Home() {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          follow_up_dates: targetDateISO
+          follow_up_dates: targetDateFormatted
         })
       });
       const data = await res.json();
@@ -708,6 +710,14 @@ export default function Home() {
     }
   };
 
+  // Helper for today's date in Indian format (DD/MM/YYYY)
+  const getTodayIndianStr = () => {
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    return `${d}/${m}/${now.getFullYear()}`;
+  };
+
   // Open Edit Modal
   const openEdit = (lead) => {
     setEditingLead(lead);
@@ -715,11 +725,11 @@ export default function Home() {
       company: lead.company || '', city: lead.city || '', locations: lead.locations || '',
       founder: lead.founder || '', linkedin: lead.linkedin || '', contact: lead.contact || '',
       email: lead.email || '', pain_point: lead.pain_point || '', source: lead.source || 'Direct',
-      date_added: lead.date_added || new Date().toISOString().split('T')[0],
+      date_added: normalizeToIndianDate(lead.date_added) || getTodayIndianStr(),
       assigned_to: lead.assigned_to || 'Sales Team', status: lead.status || 'New',
       notes: lead.notes || '', score_of_client: lead.score_of_client || '',
-      reachout_date: lead.reachout_date || '', new_status: lead.new_status || '',
-      next_action: lead.next_action || '', follow_up_dates: lead.follow_up_dates || ''
+      reachout_date: normalizeToIndianDate(lead.reachout_date) || '', new_status: lead.new_status || '',
+      next_action: lead.next_action || '', follow_up_dates: normalizeToIndianDate(lead.follow_up_dates) || ''
     });
     setLeadModalOpen(true);
   };
@@ -905,11 +915,12 @@ export default function Home() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '0 12px' }}>
                 <i className="fa-solid fa-calendar" style={{ color: '#4f46e5', fontSize: '14px' }}></i>
                 <input
-                  type="date"
+                  type="text"
+                  placeholder="Filter Date (DD/MM/YYYY)"
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  style={{ border: 'none', background: 'transparent', fontSize: '13px', outline: 'none', color: '#0f172a', fontWeight: 600 }}
-                  title="Filter Leads by Date"
+                  style={{ border: 'none', background: 'transparent', fontSize: '13px', outline: 'none', color: '#0f172a', fontWeight: 600, width: '170px' }}
+                  title="Filter Leads by Date (DD/MM/YYYY)"
                 />
                 {filterDate && (
                   <button onClick={() => setFilterDate('')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '14px' }}>&times;</button>
@@ -1108,9 +1119,9 @@ export default function Home() {
                           <th>Score</th>
                           <th>Status</th>
                           <th>Next Action</th>
-                          <th>Outreach Date</th>
-                          <th>Follow-up Date</th>
-                          <th>Date Added</th>
+                          <th>Outreach Date (DD/MM/YYYY)</th>
+                          <th>Follow-up Date (DD/MM/YYYY)</th>
+                          <th>Date Added (DD/MM/YYYY)</th>
                           <th>Agent & Source</th>
                           <th>Actions</th>
                         </tr>
@@ -1439,10 +1450,11 @@ export default function Home() {
               </div>
 
               <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e2e8f0' }}>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '6px' }}>Or Select Custom Date:</label>
+                <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '6px' }}>Or Select Custom Date (DD/MM/YYYY):</label>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <input
-                    type="date"
+                    type="text"
+                    placeholder="DD/MM/YYYY e.g. 09/08/2026"
                     value={customRescheduleDate}
                     onChange={(e) => setCustomRescheduleDate(e.target.value)}
                     style={{ flex: 1, padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
@@ -1709,8 +1721,8 @@ export default function Home() {
                     <input type="text" value={formData.source} onChange={(e) => setFormData({ ...formData, source: e.target.value })} />
                   </div>
                   <div className="form-group">
-                    <label>Date Added</label>
-                    <input type="date" value={formData.date_added} onChange={(e) => setFormData({ ...formData, date_added: e.target.value })} />
+                    <label>Date Added (DD/MM/YYYY)</label>
+                    <input type="text" placeholder="DD/MM/YYYY e.g. 08/08/2026" value={formData.date_added} onChange={(e) => setFormData({ ...formData, date_added: e.target.value })} />
                   </div>
                   <div className="form-group">
                     <label>Assigned To</label>
@@ -1734,12 +1746,12 @@ export default function Home() {
                     <input type="text" value={formData.new_status} onChange={(e) => setFormData({ ...formData, new_status: e.target.value })} placeholder="Priority or custom status" />
                   </div>
                   <div className="form-group">
-                    <label>Outreach / Reachout Date</label>
-                    <input type="date" value={formData.reachout_date} onChange={(e) => setFormData({ ...formData, reachout_date: e.target.value })} />
+                    <label>Outreach / Reachout Date (DD/MM/YYYY)</label>
+                    <input type="text" placeholder="DD/MM/YYYY e.g. 08/08/2026" value={formData.reachout_date} onChange={(e) => setFormData({ ...formData, reachout_date: e.target.value })} />
                   </div>
                   <div className="form-group">
-                    <label>Follow up Date</label>
-                    <input type="date" value={formData.follow_up_dates} onChange={(e) => setFormData({ ...formData, follow_up_dates: e.target.value })} />
+                    <label>Follow up Date (DD/MM/YYYY)</label>
+                    <input type="text" placeholder="DD/MM/YYYY e.g. 08/08/2026" value={formData.follow_up_dates} onChange={(e) => setFormData({ ...formData, follow_up_dates: e.target.value })} />
                   </div>
                   <div className="form-group full-width">
                     <label>Next Action</label>
@@ -1819,7 +1831,8 @@ export default function Home() {
             {/* Batch Reschedule Date */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <input
-                type="date"
+                type="text"
+                placeholder="DD/MM/YYYY"
                 value={bulkRescheduleDate}
                 onChange={(e) => setBulkRescheduleDate(e.target.value)}
                 className="bulk-select-input"

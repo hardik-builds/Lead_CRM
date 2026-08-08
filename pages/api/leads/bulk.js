@@ -1,7 +1,7 @@
 import dbConnect from '../../../lib/dbConnect';
 import Lead from '../../../models/Lead';
 import cacheService from '../../../lib/cacheService';
-import { checkAndSendReminders } from '../../../lib/reminderService';
+import { checkAndSendReminders, normalizeToIndianDate } from '../../../lib/reminderService';
 import { verifyRequestAuth } from '../../../lib/auth';
 
 export default async function handler(req, res) {
@@ -39,15 +39,16 @@ export default async function handler(req, res) {
           }
         );
       } else if (action === 'reschedule') {
+        const formattedDate = normalizeToIndianDate(follow_up_dates) || follow_up_dates;
         await Lead.updateMany(
           { _id: { $in: leadIds } },
           {
-            $set: { follow_up_dates },
+            $set: { follow_up_dates: formattedDate },
             $push: {
               activity_log: {
                 timestamp: new Date(),
                 action: 'Bulk Reschedule',
-                details: `Follow-up date updated to '${follow_up_dates}' via Bulk Actions`,
+                details: `Follow-up date updated to '${formattedDate}' via Bulk Actions`,
                 performedBy: 'Sales Team'
               }
             }

@@ -4,6 +4,35 @@ import cacheService from '../../../lib/cacheService';
 import { checkAndSendReminders, normalizeToISO, normalizeToIndianDate } from '../../../lib/reminderService';
 import { verifyRequestAuth } from '../../../lib/auth';
 
+// Universal Multi-Format Date Matcher for Legacy & New Formats
+function matchesDateFilter(rawFieldVal, queryStr) {
+  if (!rawFieldVal || !queryStr) return false;
+  const val = String(rawFieldVal).trim();
+  const q = String(queryStr).trim();
+  if (!val || !q) return false;
+
+  // 1. Direct raw substring match (case insensitive)
+  if (val.toLowerCase().includes(q.toLowerCase())) return true;
+
+  // 2. Indian DD/MM/YYYY format normalized match
+  const indianVal = normalizeToIndianDate(val);
+  const indianQ = normalizeToIndianDate(q);
+  if (indianVal && indianQ && indianVal === indianQ) return true;
+  if (indianVal && indianVal.includes(q)) return true;
+
+  // 3. ISO format normalized match (YYYY-MM-DD)
+  const isoVal = normalizeToISO(val);
+  const isoQ = normalizeToISO(q);
+  if (isoVal && isoQ && isoVal === isoQ) return true;
+
+  // 4. Strip separators match (slashes, dashes, dots)
+  const cleanVal = (indianVal || val).replace(/[-/. ]/g, '');
+  const cleanQ = q.replace(/[-/. ]/g, '');
+  if (cleanVal && cleanQ && cleanVal.includes(cleanQ)) return true;
+
+  return false;
+}
+
 export default async function handler(req, res) {
   // Verify JWT Authentication for API safety
   const auth = verifyRequestAuth(req);
@@ -56,14 +85,14 @@ export default async function handler(req, res) {
 
       let allLeads = await Lead.find(query).sort({ createdAt: -1 }).lean();
 
-      // Filter by Exact Date if specified
+      // Filter by Exact or Partial Date if specified (supports legacy & new date formats)
       if (filterDate) {
-        const isoTarget = normalizeToISO(filterDate) || filterDate;
         allLeads = allLeads.filter(l => {
-          const fuISO = normalizeToISO(l.follow_up_dates);
-          const roISO = normalizeToISO(l.reachout_date);
-          const daISO = normalizeToISO(l.date_added);
-          return (fuISO === isoTarget || roISO === isoTarget || daISO === isoTarget || l.follow_up_dates === filterDate || l.reachout_date === filterDate);
+          return (
+            matchesDateFilter(l.follow_up_dates, filterDate) ||
+            matchesDateFilter(l.reachout_date, filterDate) ||
+            matchesDateFilter(l.date_added, filterDate)
+          );
         });
       }
 
