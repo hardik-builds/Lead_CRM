@@ -21,7 +21,7 @@ const LeadSchema = new mongoose.Schema({
   assigned_to: { type: String, default: 'Sales Team' },
   status: { type: String, default: 'New' },
   notes: { type: String, default: '' },
-  score_of_client: { type: Number, min: 1, max: 10, default: 5 },
+  score_of_client: { type: mongoose.Schema.Types.Mixed, default: '5' },
   reachout_date: { type: String, default: '' },
   new_status: { type: String, default: '' },
   next_action: { type: String, default: '' },

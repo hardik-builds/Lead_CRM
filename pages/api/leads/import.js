@@ -48,11 +48,7 @@ export default async function handler(req, res) {
 
         const docs = rawRows.map(row => {
           const rawScoreStr = getRowValue(row, ['Score of client', 'score_of_client', 'Client Score', 'Score', 'Rating']);
-          let rawScore = parseInt(rawScoreStr, 10);
-          if (!isNaN(rawScore) && rawScore > 10) {
-            rawScore = Math.min(Math.max(Math.round(rawScore / 10), 1), 10);
-          }
-          const scoreVal = (!isNaN(rawScore) && rawScore > 0) ? rawScore : undefined;
+          const scoreVal = rawScoreStr !== undefined && rawScoreStr !== null && String(rawScoreStr).trim() !== '' ? String(rawScoreStr).trim() : '5';
 
           const rawReachout = getRowValue(row, ['outreach date', 'outreach_date', 'reachout date', 'reachout_date', 'reach out date', 'date of outreach', 'contacted date']);
           const rawFollowup = getRowValue(row, ['Follow up date', 'follow_up_dates', 'Follow up dates', 'Followup Date', 'Follow-up Date', 'Next Followup', 'Followup', 'Follow up']);

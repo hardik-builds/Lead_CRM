@@ -1,25 +1,46 @@
 import { useState, useEffect } from 'react';
 import Head from 'next/head';
 
-// Helper: Normalize DD/MM/YYYY or YYYY-MM-DD to ISO YYYY-MM-DD
+// Helper: Normalize US Mode (MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY) to ISO YYYY-MM-DD
 function normalizeToISO(str) {
   if (!str) return null;
-  str = String(str).trim();
-  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-  if (dmyMatch) {
-    const day = dmyMatch[1].padStart(2, '0');
-    const month = dmyMatch[2].padStart(2, '0');
-    const year = dmyMatch[3];
-    return `${year}-${month}-${day}`;
+  if (typeof str === 'number') {
+    const date = new Date(Math.round((str - 25569) * 86400 * 1000));
+    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
   }
-  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  let val = String(str).trim();
+  if (!val) return null;
+
+  // 1. Match YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const ymdMatch = val.match(/^(\d{4})[-/. ](\d{1,2})[-/. ](\d{1,2})/);
   if (ymdMatch) {
     const year = ymdMatch[1];
     const month = ymdMatch[2].padStart(2, '0');
     const day = ymdMatch[3].padStart(2, '0');
     return `${year}-${month}-${day}`;
   }
-  const parsed = new Date(str);
+
+  // 2. US Mode: MM/DD/YYYY or MM-DD-YYYY or MM.DD.YYYY (Month First e.g. 8/7/2026 -> 2026-08-07)
+  const mdyMatch = val.match(/^(\d{1,2})[-/. ](\d{1,2})[-/. ](\d{4})/);
+  if (mdyMatch) {
+    let p1 = parseInt(mdyMatch[1], 10); // Month in US Mode
+    let p2 = parseInt(mdyMatch[2], 10); // Day in US Mode
+    let year = mdyMatch[3];
+    let month = p1;
+    let day = p2;
+
+    // Safety swap if p1 > 12 (e.g. 28/07/2026)
+    if (p1 > 12) {
+      day = p1;
+      month = p2;
+    }
+
+    const mStr = String(month).padStart(2, '0');
+    const dStr = String(day).padStart(2, '0');
+    return `${year}-${mStr}-${dStr}`;
+  }
+
+  const parsed = new Date(val);
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().split('T')[0];
   }
@@ -41,6 +62,44 @@ function getFollowUpStatus(dateStr) {
   } else {
     return { type: 'upcoming', label: iso, icon: 'fa-solid fa-calendar-day', rowClass: '', pillClass: 'pill-upcoming' };
   }
+}
+
+// Universal Score Evaluator (Handles numbers, ranges "7-8", "8-10", "8/10")
+function getScoreValue(raw) {
+  if (raw === undefined || raw === null || raw === '') return 5;
+  if (typeof raw === 'number') {
+    if (raw > 10) return Math.min(Math.round(raw / 10), 10);
+    return raw;
+  }
+  const str = String(raw).trim();
+  
+  // Match range like "7-8" or "8-10" or "7 - 8"
+  const rangeMatch = str.match(/^(\d{1,2})\s*[-–—]\s*(\d{1,2})$/);
+  if (rangeMatch) {
+    const low = parseInt(rangeMatch[1], 10);
+    const high = parseInt(rangeMatch[2], 10);
+    return (low + high) / 2;
+  }
+
+  const numMatch = str.match(/\d+/);
+  if (numMatch) {
+    let val = parseInt(numMatch[0], 10);
+    if (val > 10) val = Math.min(Math.round(val / 10), 10);
+    return val;
+  }
+
+  return 5;
+}
+
+// Display Badge Formatter (e.g. "7-8/10" or "8/10")
+function getScoreDisplay(raw) {
+  if (raw === undefined || raw === null || raw === '') return '5/10';
+  const str = String(raw).trim();
+  if (str.includes('-') || str.includes('–') || str.includes('—')) {
+    return `${str}/10`;
+  }
+  const val = getScoreValue(raw);
+  return `${val}/10`;
 }
 
 // Parse all valid phone numbers from multi-number contact strings (e.g. "9876543210 / 9123456789")
@@ -313,9 +372,9 @@ export default function Home() {
         return new Date(isoB) - new Date(isoA);
       });
     } else if (sortOption === 'score_desc') {
-      list.sort((a, b) => (b.score_of_client || 0) - (a.score_of_client || 0));
+      list.sort((a, b) => getScoreValue(b.score_of_client) - getScoreValue(a.score_of_client));
     } else if (sortOption === 'score_asc') {
-      list.sort((a, b) => (a.score_of_client || 0) - (b.score_of_client || 0));
+      list.sort((a, b) => getScoreValue(a.score_of_client) - getScoreValue(b.score_of_client));
     } else if (sortOption === 'date_added_desc') {
       list.sort((a, b) => new Date(b.date_added || b.createdAt || 0) - new Date(a.date_added || a.createdAt || 0));
     } else if (sortOption === 'date_added_asc') {
@@ -1037,11 +1096,11 @@ export default function Home() {
                           </tr>
                         ) : (
                           sortedLeads.map((lead, index) => {
-                            let score = lead.score_of_client || 5;
-                            if (score > 10) score = Math.min(Math.max(Math.round(score / 10), 1), 10);
+                            const scoreVal = getScoreValue(lead.score_of_client);
+                            const scoreDisplay = getScoreDisplay(lead.score_of_client);
 
-                            const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
-                            const scoreIconClass = score >= 8 ? 'fa-solid fa-fire' : score >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
+                            const scoreClass = scoreVal >= 8 ? 'score-hot' : scoreVal >= 5 ? 'score-warm' : 'score-cold';
+                            const scoreIconClass = scoreVal >= 8 ? 'fa-solid fa-fire' : scoreVal >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
 
                             const followStatus = getFollowUpStatus(lead.follow_up_dates);
                             const rowHighlightClass = followStatus ? followStatus.rowClass : '';
@@ -1107,7 +1166,7 @@ export default function Home() {
                                 </td>
                                 <td>
                                   <span className={`score-badge ${scoreClass}`}>
-                                    <i className={scoreIconClass}></i> {score}/10
+                                    <i className={scoreIconClass}></i> {scoreDisplay}
                                   </span>
                                 </td>
                                 <td>
@@ -1207,10 +1266,10 @@ export default function Home() {
                       </div>
                     ) : (
                       sortedLeads.map((lead, index) => {
-                        let score = lead.score_of_client || 5;
-                        if (score > 10) score = Math.min(Math.max(Math.round(score / 10), 1), 10);
-                        const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
-                        const scoreIconClass = score >= 8 ? 'fa-solid fa-fire' : score >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
+                        const scoreVal = getScoreValue(lead.score_of_client);
+                        const scoreDisplay = getScoreDisplay(lead.score_of_client);
+                        const scoreClass = scoreVal >= 8 ? 'score-hot' : scoreVal >= 5 ? 'score-warm' : 'score-cold';
+                        const scoreIconClass = scoreVal >= 8 ? 'fa-solid fa-fire' : scoreVal >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
 
                         const followStatus = getFollowUpStatus(lead.follow_up_dates);
                         const notesText = lead.pain_point || lead.notes || '';
@@ -1222,7 +1281,7 @@ export default function Home() {
                                 <strong style={{ fontSize: '15px', color: '#0f172a' }}>#{index + 1} {lead.company}</strong>
                                 <span style={{ fontSize: '12px', color: '#64748b', display: 'block' }}>{lead.city || 'N/A'}</span>
                               </div>
-                              <span className={`score-badge ${scoreClass}`}><i className={scoreIconClass}></i> {score}/10</span>
+                              <span className={`score-badge ${scoreClass}`}><i className={scoreIconClass}></i> {scoreDisplay}</span>
                             </div>
 
                             <div className="mobile-lead-card-body">
@@ -1609,8 +1668,8 @@ export default function Home() {
                     <input type="text" value={formData.linkedin} onChange={(e) => setFormData({ ...formData, linkedin: e.target.value })} />
                   </div>
                   <div className="form-group">
-                    <label>Client Score (Scale 1 to 10)</label>
-                    <input type="number" min="1" max="10" placeholder="1 - 10" value={formData.score_of_client} onChange={(e) => setFormData({ ...formData, score_of_client: e.target.value })} />
+                    <label>Client Score (1 to 10 or Range e.g. 7-8, 8-10)</label>
+                    <input type="text" placeholder="e.g. 8 or 7-8 or 8-10" value={formData.score_of_client} onChange={(e) => setFormData({ ...formData, score_of_client: e.target.value })} />
                   </div>
                   <div className="form-group full-width">
                     <label>Pain Point</label>
@@ -1834,10 +1893,10 @@ function KanbanView({ leads, onMoveStage, onEdit, onReschedule, onMarkDone }) {
                   </div>
                 ) : (
                   colLeads.map(lead => {
-                    let score = lead.score_of_client || 5;
-                    if (score > 10) score = Math.min(Math.max(Math.round(score / 10), 1), 10);
-                    const scoreClass = score >= 8 ? 'score-hot' : score >= 5 ? 'score-warm' : 'score-cold';
-                    const scoreIconClass = score >= 8 ? 'fa-solid fa-fire' : score >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
+                    const scoreVal = getScoreValue(lead.score_of_client);
+                    const scoreDisplay = getScoreDisplay(lead.score_of_client);
+                    const scoreClass = scoreVal >= 8 ? 'score-hot' : scoreVal >= 5 ? 'score-warm' : 'score-cold';
+                    const scoreIconClass = scoreVal >= 8 ? 'fa-solid fa-fire' : scoreVal >= 5 ? 'fa-solid fa-bolt' : 'fa-solid fa-snowflake';
 
                     return (
                       <div key={lead._id || lead.id} className="kanban-card">
@@ -1865,7 +1924,7 @@ function KanbanView({ leads, onMoveStage, onEdit, onReschedule, onMarkDone }) {
 
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '11px' }}>
                           <span className={`score-badge ${scoreClass}`} style={{ fontSize: '10px', padding: '2px 8px' }}>
-                            <i className={scoreIconClass}></i> {score}/10
+                            <i className={scoreIconClass}></i> {scoreDisplay}
                           </span>
                           <span style={{ color: '#0284c7', fontWeight: 600 }}>{lead.city || 'Direct'}</span>
                         </div>
