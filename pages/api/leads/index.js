@@ -101,25 +101,48 @@ export default async function handler(req, res) {
       const getCategory = (l) => {
         const st = (l.status || '').toLowerCase().trim();
         const nst = (l.new_status || '').toLowerCase().trim();
+        const act = (l.next_action || '').toLowerCase().trim();
         const fu = (l.follow_up_dates || '').toLowerCase().trim();
         const notes = (l.notes || '').toLowerCase().trim();
-        const combined = `${st} ${nst} ${fu} ${notes}`;
 
         if (st === 'won') return 'won';
         if (st === 'lost') return 'lost';
 
-        // 1. If sentence contains nurture / switched off / after finding / later / hold -> Nurture List!
-        if (combined.includes('nurture') || combined.includes('switched off') || combined.includes('after finding') || combined.includes('later') || combined.includes('hold')) {
-          return 'nurture';
+        // Rule 1: Automatic 30-Day Follow-up Gap Rule (>= 30 days gap automatically goes to Nurture List)
+        if (l.follow_up_dates) {
+          const iso = normalizeToISO(l.follow_up_dates);
+          if (iso) {
+            const diffDays = Math.ceil((new Date(iso) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
+            if (diffDays >= 30) return 'nurture';
+          }
         }
 
-        // 2. If sentence strictly contains "not interested" (without nurture context) -> Not Interested!
-        if (combined.includes('not interested') || combined.includes('no interest') || combined.includes('reject')) {
+        // Rule 2: Follow Next Action column for primary categorization!
+        if (act.includes('meet') || act.includes('meeting') || act.includes('demo') || act.includes('zoom')) {
+          return 'meetings';
+        }
+        if (act.includes('nurture') || act.includes('switched off') || act.includes('after finding') || act.includes('later') || act.includes('hold')) {
+          return 'nurture';
+        }
+        if (act.includes('not interested') || act.includes('hung up') || act.includes('rude') || act.includes("don't call") || act.includes('dont call')) {
           return 'not_interested';
         }
 
-        if (st.includes('meeting') || combined.includes('meet')) return 'meetings';
-        if (st === 'qualified' || combined.includes('qualifi')) return 'qualified';
+        // Rule 3: Check Status / New Status / Notes columns for clarity!
+        if (st.includes('meeting') || nst.includes('meeting') || notes.includes('meeting')) {
+          return 'meetings';
+        }
+        if (st.includes('nurture') || nst.includes('nurture') || notes.includes('nurture') || fu.includes('switched off') || fu.includes('after finding')) {
+          return 'nurture';
+        }
+        if (st.includes('hung up') || nst.includes('hung up') || notes.includes('hung up') || st.includes('rude') || nst.includes('rude') || st.includes('not interested') || nst.includes('not interested') || fu.includes('not interested')) {
+          return 'not_interested';
+        }
+
+        if (st === 'qualified' || nst.includes('qualified') || notes.includes('qualified')) {
+          return 'qualified';
+        }
+
         if (st === 'new') return 'new';
         return 'followups';
       };

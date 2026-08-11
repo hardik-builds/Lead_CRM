@@ -31,20 +31,24 @@ function getRowValue(row, possibleKeys) {
 // Smart Status Normalizer: Scans Status, New Status, Notes, Next Action, and Followup Date columns for keywords
 function normalizeStatus(rawStatus, notesText = '', actionText = '', followupText = '', newStatusText = '') {
   const combined = (String(rawStatus || '') + ' ' + String(newStatusText || '') + ' ' + String(notesText || '') + ' ' + String(actionText || '') + ' ' + String(followupText || '')).toLowerCase();
+  const act = String(actionText || '').toLowerCase();
+  const nst = String(newStatusText || '').toLowerCase();
 
-  // 1. If sentence contains nurture / switched off / after finding / later / hold -> Nurture List!
-  if (combined.includes('nurture') || combined.includes('switched off') || combined.includes('after finding') || combined.includes('later') || combined.includes('hold')) {
+  // 1. Meeting Scheduled (Priority 1: if meet/meeting in next_action, status, new_status, or notes)
+  if (act.includes('meet') || combined.includes('meeting') || combined.includes('demo') || combined.includes('zoom')) {
+    return 'Meeting Scheduled';
+  }
+
+  // 2. Explicit Nurture Directive in Next Action / Notes / New Status -> Nurture List!
+  if (act.includes('nurture') || nst.includes('nurture') || combined.includes('switched off') || combined.includes('after finding') || combined.includes('later') || combined.includes('hold')) {
     return 'Nurture';
   }
 
-  // 2. If sentence strictly contains not interested (without nurture context) -> Not Interested!
-  if (combined.includes('not interested') || combined.includes('no interest') || combined.includes('reject')) {
+  // 3. Not Interested / Rude / Hung Up triggers in any column -> Not Interested!
+  if (combined.includes('hung up') || combined.includes('rude') || combined.includes("don't call") || combined.includes('dont call') || combined.includes('not interested') || combined.includes('no interest') || combined.includes('reject')) {
     return 'Not Interested';
   }
 
-  if (combined.includes('meet') || combined.includes('demo') || combined.includes('zoom') || combined.includes('pitch')) {
-    return 'Meeting Scheduled';
-  }
   if (combined.includes('qualifi')) {
     return 'Qualified';
   }
