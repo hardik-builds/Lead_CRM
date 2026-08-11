@@ -21,6 +21,9 @@ export default async function handler(req, res) {
       }
 
       const updateData = { ...req.body };
+      const rawPassedLog = updateData.activity_log;
+      delete updateData.activity_log; // Remove from $set to prevent path conflict with $push
+
       if (updateData.follow_up_dates !== undefined && updateData.follow_up_dates !== '') {
         updateData.follow_up_dates = normalizeToIndianDate(updateData.follow_up_dates) || updateData.follow_up_dates;
       }
@@ -31,8 +34,20 @@ export default async function handler(req, res) {
         updateData.date_added = normalizeToIndianDate(updateData.date_added) || updateData.date_added;
       }
 
-      // Build activity log entry if follow-up date or status changed
+      // Build activity log entry if follow-up date, status, or notes changed
       const newActivity = [];
+
+      // Extract any new activity item passed from frontend (e.g. Follow-up Completed)
+      if (Array.isArray(rawPassedLog) && rawPassedLog.length > 0) {
+        const existingCount = existing.activity_log ? existing.activity_log.length : 0;
+        const newPassed = rawPassedLog.slice(existingCount);
+        newPassed.forEach(item => {
+          if (item && item.action) {
+            newActivity.push(item);
+          }
+        });
+      }
+
       if (updateData.follow_up_dates && updateData.follow_up_dates !== existing.follow_up_dates) {
         newActivity.push({
           timestamp: new Date(),
@@ -60,11 +75,12 @@ export default async function handler(req, res) {
         });
       }
 
+      const updateQuery = { $set: updateData };
       if (newActivity.length > 0) {
-        updateData.$push = { activity_log: { $each: newActivity } };
+        updateQuery.$push = { activity_log: { $each: newActivity } };
       }
 
-      const updated = await Lead.findByIdAndUpdate(id, updateData, { new: true });
+      const updated = await Lead.findByIdAndUpdate(id, updateQuery, { new: true });
       cacheService.flush();
 
       return res.status(200).json({ success: true, lead: updated });
