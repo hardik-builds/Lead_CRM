@@ -102,17 +102,24 @@ export default async function handler(req, res) {
         const st = (l.status || '').toLowerCase().trim();
         const nst = (l.new_status || '').toLowerCase().trim();
         const fu = (l.follow_up_dates || '').toLowerCase().trim();
+        const notes = (l.notes || '').toLowerCase().trim();
+        const combined = `${st} ${nst} ${fu} ${notes}`;
 
-        if (st.includes('not interested') || fu.includes('not interested')) {
-          return 'not_interested';
-        }
         if (st === 'won') return 'won';
         if (st === 'lost') return 'lost';
-        if (st.includes('nurture') || nst.includes('nurture') || fu.includes('switched off') || fu.includes('after finding')) {
+
+        // 1. If sentence contains nurture / switched off / after finding / later / hold -> Nurture List!
+        if (combined.includes('nurture') || combined.includes('switched off') || combined.includes('after finding') || combined.includes('later') || combined.includes('hold')) {
           return 'nurture';
         }
-        if (st.includes('meeting')) return 'meetings';
-        if (st === 'qualified') return 'qualified';
+
+        // 2. If sentence strictly contains "not interested" (without nurture context) -> Not Interested!
+        if (combined.includes('not interested') || combined.includes('no interest') || combined.includes('reject')) {
+          return 'not_interested';
+        }
+
+        if (st.includes('meeting') || combined.includes('meet')) return 'meetings';
+        if (st === 'qualified' || combined.includes('qualifi')) return 'qualified';
         if (st === 'new') return 'new';
         return 'followups';
       };

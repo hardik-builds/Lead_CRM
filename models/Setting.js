@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const settingSchema = new mongoose.Schema({
   registeredEmails: { type: [String], default: ['admin@yourcompany.com', 'intern@yourcompany.com'] },
-  enableEmailNotifications: { type: Boolean, default: true },
+  enableEmailNotifications: { type: Boolean, default: false },
   reminderDaysBefore: { type: Number, default: 1 },
   nurtureDaysThreshold: { type: Number, default: 30 },
   smtp: {

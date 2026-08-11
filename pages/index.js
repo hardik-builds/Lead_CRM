@@ -183,7 +183,7 @@ export default function Home() {
   const [statusFilter, setStatusFilter] = useState('');
   const [sortOption, setSortOption] = useState('date_added_desc');
 
-  const [settings, setSettings] = useState({ registeredEmails: [], enableEmailNotifications: true });
+  const [settings, setSettings] = useState({ registeredEmails: [], enableEmailNotifications: false });
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
 
