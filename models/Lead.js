@@ -19,7 +19,7 @@ const LeadSchema = new mongoose.Schema({
   source: { type: String, default: 'Direct' },
   date_added: { type: String, default: () => new Date().toISOString().split('T')[0] },
   assigned_to: { type: String, default: 'Sales Team' },
-  status: { type: String, default: 'New' },
+  status: { type: String, default: 'Contacted' },
   notes: { type: String, default: '' },
   score_of_client: { type: mongoose.Schema.Types.Mixed, default: '5' },
   reachout_date: { type: String, default: '' },

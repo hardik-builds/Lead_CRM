@@ -28,6 +28,44 @@ function getRowValue(row, possibleKeys) {
   return '';
 }
 
+// Smart Status Normalizer: Automatically converts status keywords and defaults to Contacted
+function normalizeStatus(rawStatus) {
+  if (!rawStatus) return 'Contacted';
+  const str = String(rawStatus).trim().toLowerCase();
+  if (!str) return 'Contacted';
+
+  // Smart Meeting Detection (meet, meeting, demo, zoom, pitch)
+  if (str.includes('meet') || str.includes('demo') || str.includes('zoom') || str.includes('pitch')) {
+    return 'Meeting Scheduled';
+  }
+  // Smart Contacted Detection (contact, called, messaged, talked, hot lead, warm lead, cold lead)
+  if (str.includes('contact') || str.includes('called') || str.includes('messaged') || str.includes('wa sent') || str.includes('talked') || str.includes('lead')) {
+    return 'Contacted';
+  }
+  // Smart Qualified Detection
+  if (str.includes('qualifi') || str.includes('hot')) {
+    return 'Qualified';
+  }
+  // Smart Not Interested Detection
+  if (str.includes('not interest') || str.includes('no interest') || str.includes('reject')) {
+    return 'Not Interested';
+  }
+  // Smart Nurture Detection
+  if (str.includes('nurture') || str.includes('later') || str.includes('hold')) {
+    return 'Nurture';
+  }
+  // Smart Won Detection
+  if (str.includes('won') || str.includes('closed') || str.includes('converted')) {
+    return 'Won';
+  }
+  // Smart Lost Detection
+  if (str.includes('lost') || str.includes('dead') || str.includes('dropped')) {
+    return 'Lost';
+  }
+
+  return String(rawStatus).trim();
+}
+
 function getTodayIndianStr() {
   const now = new Date();
   const d = String(now.getDate()).padStart(2, '0');
@@ -60,6 +98,7 @@ export default async function handler(req, res) {
           const rawReachout = getRowValue(row, ['outreach date', 'outreach_date', 'reachout date', 'reachout_date', 'reach out date', 'date of outreach', 'contacted date']);
           const rawFollowup = getRowValue(row, ['Follow up date', 'follow_up_dates', 'Follow up dates', 'Followup Date', 'Follow-up Date', 'Next Followup', 'Followup', 'Follow up']);
           const rawDateAdded = getRowValue(row, ['Date Added', 'date_added', 'Added Date', 'Created Date', 'Date']);
+          const rawStatus = getRowValue(row, ['Status', 'status', 'Lead Status', 'Stage', 'New status', 'new_status', 'Action', 'next_action']);
 
           return {
             company: String(getRowValue(row, ['Company', 'company', 'Company Name', 'Business Name', 'Firm']) || 'Unnamed'),
@@ -73,7 +112,7 @@ export default async function handler(req, res) {
             source: String(getRowValue(row, ['Source', 'source', 'Lead Source', 'Channel']) || 'Direct'),
             date_added: normalizeToIndianDate(rawDateAdded) || getTodayIndianStr(),
             assigned_to: String(getRowValue(row, ['Assigned To', 'assigned_to', 'Agent', 'Sales Rep', 'Owner']) || 'Sales Team'),
-            status: String(getRowValue(row, ['Status', 'status', 'Lead Status', 'Stage']) || 'New'),
+            status: normalizeStatus(rawStatus),
             notes: String(getRowValue(row, ['Notes', 'notes', 'Note', 'Comments', 'Remarks', 'History']) || ''),
             score_of_client: scoreVal,
             reachout_date: normalizeToIndianDate(rawReachout) || '',

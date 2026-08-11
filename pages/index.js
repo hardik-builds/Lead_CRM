@@ -510,6 +510,8 @@ export default function Home() {
 
   // FEATURE: Kanban Drag & Drop / Move Stage Handler
   const handleMoveStage = async (leadId, newStatus) => {
+    // Instantly update local state so card moves immediately in Kanban UI
+    setLeads(prevLeads => prevLeads.map(l => (l._id === leadId || l.id === leadId) ? { ...l, status: newStatus } : l));
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
         method: 'PUT',
@@ -830,6 +832,42 @@ export default function Home() {
                 <span className="badge">{kpis.totalLeads}</span>
               </button>
 
+              <button className={`nav-item ${currentTab === 'new' ? 'active' : ''}`} onClick={() => { setCurrentTab('new'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-star" style={{ color: '#10b981' }}></i>
+                <span>Fresh New Leads</span>
+                <span className="badge" style={{ background: '#d1fae5', color: '#047857' }}>{kpis.newLeadsCount}</span>
+              </button>
+
+              <button className={`nav-item ${currentTab === 'contacted' ? 'active' : ''}`} onClick={() => { setCurrentTab('contacted'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-comments" style={{ color: '#0284c7' }}></i>
+                <span>Contacted Leads</span>
+                <span className="badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>{kpis.contactedCount}</span>
+              </button>
+
+              <button className={`nav-item ${currentTab === 'meetings' ? 'active' : ''}`} onClick={() => { setCurrentTab('meetings'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-handshake" style={{ color: '#7e22ce' }}></i>
+                <span>Meetings Scheduled</span>
+                <span className="badge" style={{ background: '#f3e8ff', color: '#6b21a8' }}>{kpis.meetingsCount}</span>
+              </button>
+
+              <button className={`nav-item ${currentTab === 'qualified' ? 'active' : ''}`} onClick={() => { setCurrentTab('qualified'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-award" style={{ color: '#4f46e5' }}></i>
+                <span>Qualified Opportunities</span>
+                <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca' }}>{kpis.qualifiedCount}</span>
+              </button>
+
+              <button className={`nav-item ${currentTab === 'nurture' ? 'active' : ''}`} onClick={() => { setCurrentTab('nurture'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-seedling" style={{ color: '#059669' }}></i>
+                <span>Nurture List</span>
+                <span className="badge" style={{ background: '#ecfdf5', color: '#047857' }}>{kpis.nurtureCount}</span>
+              </button>
+
+              <button className={`nav-item ${currentTab === 'not_interested' ? 'active' : ''}`} onClick={() => { setCurrentTab('not_interested'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-ban" style={{ color: '#ef4444' }}></i>
+                <span style={{ color: '#b91c1c', fontWeight: 700 }}>Not Interested</span>
+                <span className="badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>{kpis.notInterestedCount}</span>
+              </button>
+
               <button className={`nav-item ${currentTab === 'today' ? 'active' : ''}`} onClick={() => { setCurrentTab('today'); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-clock-rotate-left" style={{ color: '#d97706' }}></i>
                 <span style={{ color: '#92400e', fontWeight: 700 }}>Today's Follow-ups</span>
@@ -838,29 +876,6 @@ export default function Home() {
               <button className={`nav-item ${currentTab === 'overdue' ? 'active' : ''}`} onClick={() => { setCurrentTab('overdue'); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-triangle-exclamation" style={{ color: '#dc2626' }}></i>
                 <span style={{ color: '#991b1b', fontWeight: 700 }}>Overdue Follow-ups</span>
-              </button>
-
-              <button className={`nav-item ${currentTab === 'followups' ? 'active' : ''}`} onClick={() => { setCurrentTab('followups'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-calendar-days"></i>
-                <span>All Scheduled Follow-ups</span>
-                <span className="badge" style={{ background: '#fef3c7', color: '#b45309' }}>{kpis.followupsCount}</span>
-              </button>
-
-              <button className={`nav-item ${currentTab === 'reachout' ? 'active' : ''}`} onClick={() => { setCurrentTab('reachout'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-paper-plane"></i>
-                <span>Outreach Pipeline</span>
-              </button>
-
-              <button className={`nav-item ${currentTab === 'nurture' ? 'active' : ''}`} onClick={() => { setCurrentTab('nurture'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-seedling"></i>
-                <span>Nurture List</span>
-                <span className="badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>{kpis.nurtureCount}</span>
-              </button>
-
-              <button className={`nav-item ${currentTab === 'meetings' ? 'active' : ''}`} onClick={() => { setCurrentTab('meetings'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-handshake"></i>
-                <span>Meetings Scheduled</span>
-                <span className="badge" style={{ background: '#d1fae5', color: '#047857' }}>{kpis.meetingsCount}</span>
               </button>
 
               <button className={`nav-item ${currentTab === 'kanban' ? 'active' : ''}`} onClick={() => { setCurrentTab('kanban'); setMobileMenuOpen(false); }}>
@@ -987,11 +1002,11 @@ export default function Home() {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <button className="pill-today" onClick={() => setCurrentTab('today')} style={{ cursor: 'pointer', border: 'none' }}>
-                <i className="fa-solid fa-clock-rotate-left"></i> Today's Follow-ups
+                <i className="fa-solid fa-clock-rotate-left"></i> Today's Follow-ups ({kpis.todayCount || 0})
               </button>
 
               <button className="pill-overdue" onClick={() => setCurrentTab('overdue')} style={{ cursor: 'pointer', border: 'none' }}>
-                <i className="fa-solid fa-triangle-exclamation"></i> Overdue Follow-ups
+                <i className="fa-solid fa-triangle-exclamation"></i> Overdue Follow-ups ({kpis.overdueCount || 0})
               </button>
 
               {filterDate && (
@@ -1002,9 +1017,14 @@ export default function Home() {
             </div>
           </div>
 
-          {/* KPI Metrics Cards */}
+          {/* KPI Metrics Cards (Interactive & Clickable) */}
           <section className="kpi-grid">
-            <div className="kpi-card glass">
+            <div 
+              className={`kpi-card glass ${currentTab === 'all' ? 'active-kpi' : ''}`} 
+              onClick={() => setCurrentTab('all')} 
+              style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+              title="Click to view All Leads"
+            >
               <div className="kpi-icon blue"><i className="fa-solid fa-building"></i></div>
               <div className="kpi-data">
                 <span className="kpi-title">Total Active Leads</span>
@@ -1013,7 +1033,12 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="kpi-card glass">
+            <div 
+              className={`kpi-card glass ${currentTab === 'followups' ? 'active-kpi' : ''}`} 
+              onClick={() => setCurrentTab('followups')} 
+              style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+              title="Click to view Follow-ups Scheduled"
+            >
               <div className="kpi-icon amber"><i className="fa-solid fa-bell"></i></div>
               <div className="kpi-data">
                 <span className="kpi-title">Follow-ups Scheduled</span>
@@ -1022,7 +1047,12 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="kpi-card glass">
+            <div 
+              className={`kpi-card glass ${currentTab === 'nurture' ? 'active-kpi' : ''}`} 
+              onClick={() => setCurrentTab('nurture')} 
+              style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+              title="Click to view Monthly Nurture List"
+            >
               <div className="kpi-icon purple"><i className="fa-solid fa-seedling"></i></div>
               <div className="kpi-data">
                 <span className="kpi-title">Monthly Nurture List</span>
@@ -1031,12 +1061,17 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="kpi-card glass">
-              <div className="kpi-icon green"><i className="fa-solid fa-handshake"></i></div>
+            <div 
+              className={`kpi-card glass ${currentTab === 'not_interested' ? 'active-kpi' : ''}`} 
+              onClick={() => setCurrentTab('not_interested')} 
+              style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+              title="Click to view Not Interested Leads"
+            >
+              <div className="kpi-icon" style={{ background: '#fee2e2', color: '#b91c1c' }}><i className="fa-solid fa-ban"></i></div>
               <div className="kpi-data">
-                <span className="kpi-title">Meetings Scheduled</span>
-                <h3>{kpis.meetingsCount}</h3>
-                <span className="kpi-sub">Qualified Meetings</span>
+                <span className="kpi-title">Not Interested</span>
+                <h3 style={{ color: '#b91c1c' }}>{kpis.notInterestedCount || 0}</h3>
+                <span className="kpi-sub">Opted Out / Rejected</span>
               </div>
             </div>
           </section>
@@ -1058,12 +1093,18 @@ export default function Home() {
                 <div>
                   <h2>
                     {currentTab === 'all' && 'All Registered Leads'}
+                    {currentTab === 'new' && 'Fresh New Leads'}
+                    {currentTab === 'contacted' && 'Contacted & Engaged Leads'}
+                    {currentTab === 'meetings' && 'Meetings Scheduled'}
+                    {currentTab === 'qualified' && 'Qualified Opportunities'}
+                    {currentTab === 'nurture' && 'Monthly Nurture List'}
+                    {currentTab === 'not_interested' && 'Not Interested Leads'}
+                    {currentTab === 'won' && 'Won Deals'}
+                    {currentTab === 'lost' && 'Lost Deals'}
                     {currentTab === 'today' && 'Today\'s Scheduled Follow-ups'}
                     {currentTab === 'overdue' && 'Overdue Follow-ups'}
                     {currentTab === 'followups' && 'All Scheduled Follow-ups'}
                     {currentTab === 'reachout' && 'Outreach Pipeline'}
-                    {currentTab === 'nurture' && 'Monthly Nurture List'}
-                    {currentTab === 'meetings' && 'Meetings Scheduled'}
                     {filterDate && ` (Date: ${filterDate})`}
                   </h2>
                 </div>
@@ -1884,15 +1925,12 @@ function KanbanView({ leads, onMoveStage, onEdit, onReschedule, onMarkDone }) {
 
   const getLeadsForColumn = (colId) => {
     return leads.filter(l => {
-      const st = (l.status || '').toLowerCase();
-      const nst = (l.new_status || '').toLowerCase();
-      const act = (l.next_action || '').toLowerCase();
-      const notes = (l.notes || '').toLowerCase();
+      const st = (l.status || '').toLowerCase().trim();
 
       if (colId === 'Meeting Scheduled') {
-        return st.includes('meeting') || nst.includes('meeting') || act.includes('meeting') || notes.includes('meeting');
+        return st === 'meeting scheduled' || st === 'meeting' || st === 'meetings scheduled';
       } else if (colId === 'New') {
-        return st === 'new';
+        return st === 'new' || st === '';
       } else if (colId === 'Contacted') {
         return st === 'contacted';
       } else if (colId === 'Qualified') {

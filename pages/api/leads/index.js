@@ -97,9 +97,43 @@ export default async function handler(req, res) {
       }
 
       // Tab Extractions & Strict Overdue / Today Filters
+      // Helper to classify lead into 100% mutually exclusive disjoint category
+      const getCategory = (l) => {
+        const st = (l.status || '').toLowerCase().trim();
+        const nst = (l.new_status || '').toLowerCase().trim();
+        const fu = (l.follow_up_dates || '').toLowerCase().trim();
+
+        if (st.includes('not interested') || fu.includes('not interested')) {
+          return 'not_interested';
+        }
+        if (st === 'won') return 'won';
+        if (st === 'lost') return 'lost';
+        if (st.includes('nurture') || nst.includes('nurture') || fu.includes('switched off') || fu.includes('after finding')) {
+          return 'nurture';
+        }
+        if (st.includes('meeting')) return 'meetings';
+        if (st === 'qualified') return 'qualified';
+        if (st === 'new') return 'new';
+        return 'followups';
+      };
+
       let filtered = allLeads;
-      if (tab === 'followups') {
-        filtered = allLeads.filter(l => l.follow_up_dates && l.follow_up_dates.trim() !== '');
+      if (tab === 'new') {
+        filtered = allLeads.filter(l => getCategory(l) === 'new');
+      } else if (tab === 'contacted' || tab === 'followups') {
+        filtered = allLeads.filter(l => getCategory(l) === 'followups');
+      } else if (tab === 'meetings') {
+        filtered = allLeads.filter(l => getCategory(l) === 'meetings');
+      } else if (tab === 'qualified') {
+        filtered = allLeads.filter(l => getCategory(l) === 'qualified');
+      } else if (tab === 'nurture') {
+        filtered = allLeads.filter(l => getCategory(l) === 'nurture');
+      } else if (tab === 'not_interested') {
+        filtered = allLeads.filter(l => getCategory(l) === 'not_interested');
+      } else if (tab === 'won') {
+        filtered = allLeads.filter(l => getCategory(l) === 'won');
+      } else if (tab === 'lost') {
+        filtered = allLeads.filter(l => getCategory(l) === 'lost');
       } else if (tab === 'today') {
         filtered = allLeads.filter(l => {
           const fuISO = normalizeToISO(l.follow_up_dates);
@@ -108,60 +142,36 @@ export default async function handler(req, res) {
       } else if (tab === 'overdue') {
         filtered = allLeads.filter(l => {
           const fuISO = normalizeToISO(l.follow_up_dates);
-          const status = (l.status || '').toLowerCase();
-          // Closed/won/lost leads are excluded
-          if (status === 'won' || status === 'lost') return false;
-          // Strictly check if follow_up_dates is set and is prior to today
+          const cat = getCategory(l);
+          if (cat === 'won' || cat === 'lost' || cat === 'not_interested') return false;
           return fuISO && fuISO < todayStr;
         });
       } else if (tab === 'reachout') {
         filtered = allLeads.filter(l => l.reachout_date && l.reachout_date.trim() !== '');
-      } else if (tab === 'nurture') {
-        const threshold = parseInt(process.env.NURTURE_DAYS_THRESHOLD || '30', 10);
-        filtered = allLeads.filter(l => {
-          const st = (l.status || '').toLowerCase();
-          const nst = (l.new_status || '').toLowerCase();
-          const notes = (l.notes || '').toLowerCase();
-
-          if (st.includes('nurture') || nst.includes('nurture') || st.includes('not interested') || nst.includes('not interested') || notes.includes('not interested')) {
-            return true;
-          }
-          if (l.follow_up_dates) {
-            const diffDays = Math.ceil((new Date(l.follow_up_dates) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
-            return diffDays >= 7 && diffDays <= threshold;
-          }
-          return false;
-        });
-      } else if (tab === 'meetings') {
-        filtered = allLeads.filter(l => {
-          const st = (l.status || '').toLowerCase();
-          const nst = (l.new_status || '').toLowerCase();
-          const action = (l.next_action || '').toLowerCase();
-          const notes = (l.notes || '').toLowerCase();
-          return st.includes('meeting') || nst.includes('meeting') || action.includes('meeting') || notes.includes('meeting');
-        });
       }
 
-      const totalCount = await Lead.countDocuments();
-      const followupsCount = await Lead.countDocuments({
-        follow_up_dates: { $exists: true, $ne: '' }
+      let todayCount = 0;
+      let overdueCount = 0;
+      allLeads.forEach(l => {
+        const fuISO = normalizeToISO(l.follow_up_dates);
+        const cat = getCategory(l);
+        if (fuISO) {
+          if (fuISO === todayStr) {
+            todayCount++;
+          } else if (fuISO < todayStr && cat !== 'won' && cat !== 'lost' && cat !== 'not_interested') {
+            overdueCount++;
+          }
+        }
       });
-      const nurtureCount = await Lead.countDocuments({
-        $or: [
-          { status: /nurture/i },
-          { new_status: /nurture/i },
-          { status: /not interested/i },
-          { new_status: /not interested/i }
-        ]
-      });
-      const meetingsCount = await Lead.countDocuments({
-        $or: [
-          { status: /meeting/i },
-          { new_status: /meeting/i },
-          { next_action: /meeting/i },
-          { notes: /meeting/i }
-        ]
-      });
+
+      const totalCount = allLeads.length;
+      const notInterestedCount = allLeads.filter(l => getCategory(l) === 'not_interested').length;
+      const nurtureCount = allLeads.filter(l => getCategory(l) === 'nurture').length;
+      const qualifiedCount = allLeads.filter(l => getCategory(l) === 'qualified').length;
+      const meetingsCount = allLeads.filter(l => getCategory(l) === 'meetings').length;
+      const newLeadsCount = allLeads.filter(l => getCategory(l) === 'new').length;
+      const followupsCount = allLeads.filter(l => getCategory(l) === 'followups').length;
+      const contactedCount = followupsCount;
 
       const responsePayload = {
         success: true,
@@ -172,7 +182,13 @@ export default async function handler(req, res) {
           totalLeads: totalCount,
           followupsCount,
           nurtureCount,
-          meetingsCount
+          notInterestedCount,
+          meetingsCount,
+          qualifiedCount,
+          contactedCount,
+          newLeadsCount,
+          todayCount,
+          overdueCount
         }
       };
 
