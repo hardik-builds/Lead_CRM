@@ -453,15 +453,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Settings Modal
     openSettingsBtn.onclick = () => {
-      document.getElementById('setting-registeredEmail').value = currentSettings.registeredEmail || '';
-      document.getElementById('setting-enableEmailNotifications').checked = !!currentSettings.enableEmailNotifications;
-
-      const smtp = currentSettings.smtp || {};
-      document.getElementById('setting-smtpHost').value = smtp.host || '';
-      document.getElementById('setting-smtpPort').value = smtp.port || 587;
-      document.getElementById('setting-smtpUser').value = smtp.user || '';
-      document.getElementById('setting-smtpPass').value = smtp.pass || '';
-
       settingsModal.classList.remove('hidden');
     };
 
@@ -469,14 +460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('settings-form').onsubmit = async (e) => {
       e.preventDefault();
       const payload = {
-        registeredEmail: document.getElementById('setting-registeredEmail').value,
-        enableEmailNotifications: document.getElementById('setting-enableEmailNotifications').checked,
-        smtp: {
-          host: document.getElementById('setting-smtpHost').value,
-          port: document.getElementById('setting-smtpPort').value,
-          user: document.getElementById('setting-smtpUser').value,
-          pass: document.getElementById('setting-smtpPass').value
-        }
+        registeredEmail: 'admin@yourcompany.com'
       };
 
       try {

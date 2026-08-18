@@ -388,51 +388,8 @@
       </div>
       <form id="settings-form">
         <div class="settings-section">
-          <h4><i class="fa-solid fa-envelope"></i> Registered Notification Email</h4>
-          <p class="settings-desc">All automated 1-day prior follow-up & meeting reminder emails will be sent directly to this address.</p>
-          <div class="form-group">
-            <label>Registered Email Address *</label>
-            <input type="email" id="setting-registeredEmail" required placeholder="your.email@company.com" />
-          </div>
-
-          <div class="form-group checkbox-group">
-            <input type="checkbox" id="setting-enableEmailNotifications" />
-            <label for="setting-enableEmailNotifications">Enable Automated Email Notifications</label>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <h4><i class="fa-solid fa-paper-plane"></i> Email Server (SMTP Configuration)</h4>
-          <p class="settings-desc">Configure your mail server details (e.g. Gmail, Outlook, Amazon SES, SendGrid).</p>
-          
-          <div class="form-grid">
-            <div class="form-group">
-              <label>SMTP Host</label>
-              <input type="text" id="setting-smtpHost" placeholder="smtp.gmail.com" />
-            </div>
-
-            <div class="form-group">
-              <label>SMTP Port</label>
-              <input type="number" id="setting-smtpPort" placeholder="587" />
-            </div>
-
-            <div class="form-group">
-              <label>SMTP Username / Email</label>
-              <input type="text" id="setting-smtpUser" placeholder="your-email@gmail.com" />
-            </div>
-
-            <div class="form-group">
-              <label>SMTP App Password</label>
-              <input type="password" id="setting-smtpPass" placeholder="••••••••••••••••" />
-            </div>
-          </div>
-
-          <div class="test-email-box">
-            <button type="button" class="btn btn-outline" id="test-email-btn">
-              <i class="fa-solid fa-paper-plane"></i> Send Test Notification Email
-            </button>
-            <span id="test-email-status"></span>
-          </div>
+          <h4><i class="fa-solid fa-sliders"></i> General Preferences</h4>
+          <p class="settings-desc">Manage system parameters and automation thresholds.</p>
         </div>
 
         <div class="modal-footer">
