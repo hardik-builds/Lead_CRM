@@ -51,3 +51,6 @@ scratch_*.js
 test_*.js
 tmp/
 *.tmp
+
+.vercel
+.env*.local

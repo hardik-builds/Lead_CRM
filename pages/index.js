@@ -1327,6 +1327,7 @@ export default function Home() {
               onEdit={openEdit}
               onReschedule={openRescheduleModal}
               onMarkDone={handleMarkFollowedUp}
+              onSetReminder={openReminderModal}
             />
           ) : (
             <section className="view-container">
@@ -1664,6 +1665,9 @@ export default function Home() {
                               </button>
                               <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openRescheduleModal(lead)}>
                                 <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i> Reschedule
+                              </button>
+                              <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#f59e0b', borderColor: '#fde68a', background: darkMode ? '#1c2436' : '#fffbeb' }} onClick={() => openReminderModal(lead)} title="Set Email Reminder">
+                                <i className="fa-solid fa-bell"></i>
                               </button>
                               <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openEdit(lead)}>
                                 <i className="fa-solid fa-pen-to-square"></i>
@@ -2288,7 +2292,7 @@ export default function Home() {
 }
 
 // Visual Sales Kanban Board View Component
-function KanbanView({ leads, onMoveStage, onEdit, onReschedule, onMarkDone }) {
+function KanbanView({ leads, onMoveStage, onEdit, onReschedule, onMarkDone, onSetReminder }) {
   const columns = [
     { id: 'New', title: 'New Leads', icon: 'fa-solid fa-star', color: '#4f46e5', bg: '#e0e7ff' },
     { id: 'Contacted', title: 'Contacted & Engaged', icon: 'fa-solid fa-comments', color: '#0284c7', bg: '#e0f2fe' },
@@ -2401,6 +2405,9 @@ function KanbanView({ leads, onMoveStage, onEdit, onReschedule, onMarkDone }) {
                           </button>
                           <button className="icon-btn" style={{ width: '28px', height: '28px', fontSize: '11px' }} onClick={() => onReschedule(lead)} title="Reschedule Follow-up">
                             <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i>
+                          </button>
+                          <button className="icon-btn" style={{ width: '28px', height: '28px', fontSize: '11px', color: '#f59e0b', borderColor: '#fde68a', background: '#fffbeb' }} onClick={() => onSetReminder && onSetReminder(lead)} title="Set Email Reminder">
+                            <i className="fa-solid fa-bell"></i>
                           </button>
                           <button className="icon-btn" style={{ width: '28px', height: '28px', fontSize: '11px' }} onClick={() => onEdit(lead)} title="Edit Lead">
                             <i className="fa-solid fa-pen-to-square"></i>
