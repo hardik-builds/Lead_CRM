@@ -226,6 +226,40 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [importing, setImporting] = useState(false);
 
+  // Reminder System State
+  const [reminderModalOpen, setReminderModalOpen] = useState(false);
+  const [reminderLead, setReminderLead] = useState(null);
+  const [reminderMessage, setReminderMessage] = useState('');
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderTime, setReminderTime] = useState('10:00');
+  const [reminderEmail, setReminderEmail] = useState('');
+  const [reminders, setReminders] = useState([]);
+  const [remindersSaving, setRemindersSaving] = useState(false);
+  const [remindersDrawerOpen, setRemindersDrawerOpen] = useState(false);
+
+  // Theme State
+  const [darkMode, setDarkMode] = useState(false);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('crm_theme');
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.body.classList.add('dark-mode');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const nextMode = !darkMode;
+    setDarkMode(nextMode);
+    if (nextMode) {
+      document.body.classList.add('dark-mode');
+      localStorage.setItem('crm_theme', 'dark');
+    } else {
+      document.body.classList.remove('dark-mode');
+      localStorage.setItem('crm_theme', 'light');
+    }
+  };
+
   useEffect(() => {
     // Auth Check
     const token = localStorage.getItem('crm_token');
@@ -237,6 +271,7 @@ export default function Home() {
       setLoggedInUserEmail(userEmail || 'user@company.com');
       fetchSettings();
       fetchNotifications();
+      fetchReminders();
     }
   }, []);
 
@@ -639,6 +674,119 @@ export default function Home() {
     }
   };
 
+  // ============ REMINDER SYSTEM HANDLERS ============
+
+  // Fetch all reminders
+  const fetchReminders = async () => {
+    try {
+      const res = await fetch('/api/reminders', { headers: getAuthHeaders() });
+      const data = await res.json();
+      if (data.success) {
+        setReminders(data.reminders || []);
+      }
+    } catch (err) {
+      console.error('Fetch reminders error:', err);
+    }
+  };
+
+  // Open Set Reminder Modal for a lead
+  const openReminderModal = (lead) => {
+    setReminderLead(lead);
+    setReminderMessage('');
+    // Default date: today in YYYY-MM-DD for the input
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    setReminderDate(`${yyyy}-${mm}-${dd}`);
+    setReminderTime('10:00');
+    setReminderEmail(loggedInUserEmail || 'hsingh.doc04@gmail.com');
+    setReminderModalOpen(true);
+  };
+
+  // Save a new reminder
+  const handleSaveReminder = async () => {
+    if (!reminderMessage.trim()) {
+      alert('Please enter a reminder message.');
+      return;
+    }
+    if (!reminderDate || !reminderTime) {
+      alert('Please select a date and time for the reminder.');
+      return;
+    }
+
+    setRemindersSaving(true);
+    try {
+      // Convert YYYY-MM-DD input to DD/MM/YYYY for IST storage
+      const [y, m, d] = reminderDate.split('-');
+      const dateIST = `${d}/${m}/${y}`;
+
+      const res = await fetch('/api/reminders', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          leadId: reminderLead._id || reminderLead.id,
+          company: reminderLead.company,
+          reminderMessage: reminderMessage.trim(),
+          reminderDateIST: dateIST,
+          reminderTimeIST: reminderTime,
+          recipientEmail: reminderEmail || loggedInUserEmail,
+          createdBy: loggedInUserEmail || 'Sales Team'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(`✅ Reminder set! You will receive an email on ${dateIST} at ${reminderTime} IST.`);
+        setReminderModalOpen(false);
+        fetchReminders();
+      } else {
+        alert('Failed to set reminder: ' + (data.error || 'Error'));
+      }
+    } catch (err) {
+      alert('Error setting reminder: ' + err.message);
+    } finally {
+      setRemindersSaving(false);
+    }
+  };
+
+  // Delete a reminder
+  const handleDeleteReminder = async (reminderId) => {
+    if (!confirm('Delete this reminder?')) return;
+    try {
+      const res = await fetch(`/api/reminders/${reminderId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchReminders();
+      } else {
+        alert('Failed to delete: ' + (data.error || 'Error'));
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
+  // Manually trigger reminder check
+  const handleCheckReminders = async () => {
+    try {
+      const res = await fetch('/api/reminders/check', {
+        method: 'POST',
+        headers: getAuthHeaders()
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert(data.message);
+        fetchReminders();
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
+  // ============ END REMINDER SYSTEM ============
+
   // Universal Delete All Leads Handler
   const handleDeleteAllLeads = async () => {
     if (!confirm('CONFIRMATION: Are you sure you want to permanently delete ALL leads in your database? This action cannot be undone.')) {
@@ -781,7 +929,15 @@ export default function Home() {
     }
   };
 
-  if (!authenticated) return null;
+  if (!authenticated) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: darkMode ? '#0f172a' : '#f8fafc', color: darkMode ? '#f8fafc' : '#0f172a', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+        <i className="fa-solid fa-spinner fa-spin" style={{ fontSize: '40px', color: '#4f46e5', marginBottom: '16px' }}></i>
+        <h2 style={{ fontSize: '18px', fontWeight: 700 }}>Loading LeadPulse CRM...</h2>
+        <p style={{ fontSize: '13px', color: '#64748b', marginTop: '6px' }}>Verifying your session...</p>
+      </div>
+    );
+  }
 
   const sortedLeads = getSortedLeads();
 
@@ -887,10 +1043,50 @@ export default function Home() {
                 <i className="fa-solid fa-chart-pie"></i>
                 <span>Analytics & Intelligence</span>
               </button>
+
+              <button className="nav-item" onClick={() => { setRemindersDrawerOpen(true); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-bell" style={{ color: '#f59e0b' }}></i>
+                <span>My Reminders ({(reminders || []).filter(r => r && r.status === 'pending').length})</span>
+              </button>
             </nav>
           </div>
 
           <div className="sidebar-footer">
+            {/* Interactive Theme Toggle Switch Card */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', background: darkMode ? '#1e293b' : '#f8fafc', border: `1px solid ${darkMode ? '#334155' : '#e2e8f0'}`, borderRadius: '12px', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                <i className={darkMode ? "fa-solid fa-moon" : "fa-solid fa-sun"} style={{ color: darkMode ? '#818cf8' : '#f59e0b', fontSize: '16px' }}></i>
+                <span>{darkMode ? 'Dark Mode' : 'Light Mode'}</span>
+              </div>
+              <button
+                onClick={toggleTheme}
+                title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                style={{
+                  width: '46px',
+                  height: '24px',
+                  borderRadius: '12px',
+                  background: darkMode ? '#6366f1' : '#cbd5e1',
+                  position: 'relative',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  transition: 'background 0.3s'
+                }}
+              >
+                <span style={{
+                  width: '18px',
+                  height: '18px',
+                  borderRadius: '50%',
+                  background: '#ffffff',
+                  position: 'absolute',
+                  top: '3px',
+                  left: darkMode ? '24px' : '3px',
+                  transition: 'left 0.3s ease',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                }}></span>
+              </button>
+            </div>
+
             <div className="registered-email-card">
               <i className="fa-solid fa-user-circle"></i>
               <div className="email-info">
@@ -915,26 +1111,46 @@ export default function Home() {
         <main className="main-content">
           {/* Topbar Universal Search & Date Picker Filter */}
           <header className="topbar">
-            <div className="topbar-search" style={{ display: 'flex', gap: '10px', maxWidth: '600px' }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <i className="fa-solid fa-magnifying-glass search-icon"></i>
+            <div className="topbar-search" style={{ display: 'flex', gap: '10px', flex: 1, maxWidth: '600px', minWidth: '300px' }}>
+              <div style={{ position: 'relative', width: '100%', flex: 1 }}>
+                <i className="fa-solid fa-magnifying-glass search-icon" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: darkMode ? '#94a3b8' : '#64748b', zIndex: 2 }}></i>
                 <input
                   type="text"
                   placeholder="Search by Company, Founder, Phone, Email, City, or Date..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 36px 12px 42px',
+                    background: darkMode ? '#1e293b' : '#ffffff',
+                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
+                    borderRadius: '12px',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    color: darkMode ? '#f8fafc' : '#0f172a',
+                    outline: 'none'
+                  }}
                 />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', color: darkMode ? '#94a3b8' : '#64748b', fontSize: '16px', zIndex: 3 }}
+                    title="Clear search"
+                  >
+                    &times;
+                  </button>
+                )}
               </div>
 
               {/* Exact Date Picker Input */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#fff', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '0 12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : 'var(--border-color)'}`, borderRadius: '12px', padding: '0 12px' }}>
                 <i className="fa-solid fa-calendar" style={{ color: '#4f46e5', fontSize: '14px' }}></i>
                 <input
                   type="text"
                   placeholder="Filter Date (DD/MM/YYYY)"
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  style={{ border: 'none', background: 'transparent', fontSize: '13px', outline: 'none', color: '#0f172a', fontWeight: 600, width: '170px' }}
+                  style={{ border: 'none', background: 'transparent', fontSize: '13px', outline: 'none', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600, width: '170px' }}
                   title="Filter Leads by Date (DD/MM/YYYY)"
                 />
                 {filterDate && (
@@ -944,6 +1160,26 @@ export default function Home() {
             </div>
 
             <div className="topbar-actions">
+              {/* Theme Toggle Button */}
+              <button
+                className="btn btn-outline"
+                onClick={toggleTheme}
+                title={darkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: darkMode ? '#334155' : '#ffffff',
+                  color: darkMode ? '#fde047' : '#0f172a',
+                  borderColor: darkMode ? '#475569' : '#cbd5e1',
+                  fontWeight: 700,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
+                }}
+              >
+                <i className={darkMode ? "fa-solid fa-sun" : "fa-solid fa-moon"} style={{ color: darkMode ? '#fde047' : '#6366f1', fontSize: '15px' }}></i>
+                <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+              </button>
+
               {/* FEATURE 2: Export Filtered Leads to CSV Button */}
               <button className="btn btn-outline" onClick={handleExportCSV} title="Export filtered leads to Excel / CSV">
                 <i className="fa-solid fa-file-arrow-down" style={{ color: '#10b981' }}></i>
@@ -958,6 +1194,11 @@ export default function Home() {
               <button className="btn btn-outline" onClick={handleManualScan} disabled={scanning} title="Run manual alert scan">
                 <i className={scanning ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-rotate"}></i>
                 <span>{scanning ? 'Scanning...' : 'Scan Alerts'}</span>
+              </button>
+
+              <button className="btn btn-outline" onClick={() => setRemindersDrawerOpen(true)} title="View my custom reminders">
+                <i className="fa-solid fa-bell" style={{ color: '#f59e0b' }}></i>
+                <span>Reminders ({(reminders || []).filter(r => r && r.status === 'pending').length})</span>
               </button>
 
               <button
@@ -1252,25 +1493,25 @@ export default function Home() {
                                 </td>
                                 <td>
                                   <span className="status-pill status-new">{lead.status || 'New'}</span>
-                                  {lead.new_status && <div style={{ fontSize: '11px', color: '#0369a1', fontWeight: 600, marginTop: '2px' }}>{lead.new_status}</div>}
+                                  {lead.new_status && <div style={{ fontSize: '11px', color: darkMode ? '#38bdf8' : '#0369a1', fontWeight: 600, marginTop: '2px' }}>{lead.new_status}</div>}
                                 </td>
                                 <td>
                                   {lead.next_action ? (
-                                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                      <i className="fa-solid fa-arrow-right" style={{ color: '#4f46e5', fontSize: '11px' }}></i>
+                                    <div style={{ fontSize: '12px', fontWeight: 600, color: darkMode ? '#34d399' : '#334155', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      <i className="fa-solid fa-arrow-right" style={{ color: darkMode ? '#818cf8' : '#4f46e5', fontSize: '11px' }}></i>
                                       <span>{lead.next_action}</span>
                                     </div>
                                   ) : (
-                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
+                                    <span style={{ color: darkMode ? '#64748b' : '#94a3b8', fontSize: '12px' }}>—</span>
                                   )}
                                 </td>
                                 <td>
                                   {lead.reachout_date ? (
-                                    <span className="date-pill" style={{ color: '#0284c7', fontWeight: 600 }}>
+                                    <span className="date-pill" style={{ color: darkMode ? '#60a5fa' : '#0284c7', fontWeight: 600 }}>
                                       <i className="fa-solid fa-paper-plane"></i> {lead.reachout_date}
                                     </span>
                                   ) : (
-                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
+                                    <span style={{ color: darkMode ? '#64748b' : '#94a3b8', fontSize: '12px' }}>—</span>
                                   )}
                                 </td>
                                 <td>
@@ -1280,24 +1521,24 @@ export default function Home() {
                                         <span className={followStatus.pillClass}>
                                           <i className={followStatus.icon}></i> {followStatus.label}
                                         </span>
-                                        <span style={{ display: 'block', fontSize: '10px', color: '#64748b', marginTop: '2px' }}>
+                                        <span style={{ display: 'block', fontSize: '10px', color: darkMode ? '#94a3b8' : '#64748b', marginTop: '2px' }}>
                                           {lead.follow_up_dates}
                                         </span>
                                       </div>
                                     ) : (
-                                      <span style={{ fontSize: '12px', color: '#475569' }}>{lead.follow_up_dates}</span>
+                                      <span style={{ fontSize: '12px', color: darkMode ? '#cbd5e1' : '#475569' }}>{lead.follow_up_dates}</span>
                                     )
                                   ) : (
-                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
+                                    <span style={{ color: darkMode ? '#64748b' : '#94a3b8', fontSize: '12px' }}>—</span>
                                   )}
                                 </td>
                                 <td>
                                   {lead.date_added ? (
-                                    <span style={{ fontSize: '12px', color: '#475569' }}>
+                                    <span style={{ fontSize: '12px', color: darkMode ? '#cbd5e1' : '#475569' }}>
                                       <i className="fa-solid fa-clock"></i> {lead.date_added}
                                     </span>
                                   ) : (
-                                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>
+                                    <span style={{ color: darkMode ? '#64748b' : '#94a3b8', fontSize: '12px' }}>—</span>
                                   )}
                                 </td>
                                 <td>
@@ -1313,6 +1554,10 @@ export default function Home() {
                                     {/* 1-Click Reschedule Action Button */}
                                     <button className="icon-btn" onClick={() => openRescheduleModal(lead)} title="Reschedule Follow-up in 1 Click">
                                       <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i>
+                                    </button>
+                                    {/* Set Reminder Button */}
+                                    <button className="icon-btn" onClick={() => openReminderModal(lead)} title="Set Email Reminder" style={{ color: '#f59e0b', borderColor: '#fde68a', background: '#fffbeb' }}>
+                                      <i className="fa-solid fa-bell"></i>
                                     </button>
                                     <button className="icon-btn" onClick={() => openEdit(lead)} title="Edit Lead"><i className="fa-solid fa-pen-to-square"></i></button>
                                     {lead.email && <a href={`mailto:${lead.email}`} className="icon-btn" title="Send Email"><i className="fa-solid fa-envelope"></i></a>}
@@ -1513,6 +1758,135 @@ export default function Home() {
               <div className="modal-footer">
                 <button type="button" className="btn btn-outline" onClick={() => setRescheduleModalOpen(false)}>Cancel</button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* FEATURE: MODAL - Set Email Reminder */}
+        {reminderModalOpen && reminderLead && (
+          <div className="modal-overlay">
+            <div className="modal-card" style={{ maxWidth: '500px' }}>
+              <div className="modal-header">
+                <h3>
+                  <i className="fa-solid fa-bell" style={{ color: '#f59e0b', marginRight: '8px' }}></i>
+                  Set Reminder for {reminderLead.company}
+                </h3>
+                <button className="close-modal-btn" onClick={() => setReminderModalOpen(false)}>&times;</button>
+              </div>
+
+              <div style={{ padding: '0 24px 16px' }}>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '6px' }}>Reminder Message *</label>
+                  <textarea
+                    rows={3}
+                    placeholder="E.g. Call him about pricing, Send proposal, Follow up on WhatsApp..."
+                    value={reminderMessage}
+                    onChange={(e) => setReminderMessage(e.target.value)}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px', resize: 'vertical', fontFamily: 'inherit' }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '6px' }}>Date (IST) *</label>
+                    <input
+                      type="date"
+                      value={reminderDate}
+                      onChange={(e) => setReminderDate(e.target.value)}
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '6px' }}>Time (IST) *</label>
+                    <input
+                      type="time"
+                      value={reminderTime}
+                      onChange={(e) => setReminderTime(e.target.value)}
+                      style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '6px' }}>Send Reminder Email To</label>
+                  <input
+                    type="email"
+                    value={reminderEmail}
+                    onChange={(e) => setReminderEmail(e.target.value)}
+                    placeholder="your.email@gmail.com"
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '14px' }}
+                  />
+                </div>
+
+                <div style={{ background: '#eff6ff', borderRadius: '8px', padding: '12px', fontSize: '12px', color: '#1e40af', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <i className="fa-solid fa-circle-info"></i>
+                  You'll receive an email at the exact date & time you set (Indian Standard Time).
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setReminderModalOpen(false)}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleSaveReminder}
+                  disabled={remindersSaving}
+                  style={{ background: '#f59e0b', borderColor: '#f59e0b' }}
+                >
+                  {remindersSaving ? 'Saving...' : '🔔 Set Reminder'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* FEATURE: DRAWER - My Reminders */}
+        {remindersDrawerOpen && (
+          <div className="modal-overlay" onClick={() => setRemindersDrawerOpen(false)}>
+            <div className="drawer-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px', width: '100%', position: 'fixed', right: 0, top: 0, bottom: 0, background: '#fff', boxShadow: '-4px 0 20px rgba(0,0,0,0.1)', zIndex: 1001, overflowY: 'auto', padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
+                  <i className="fa-solid fa-bell" style={{ color: '#f59e0b', marginRight: '8px' }}></i>
+                  My Reminders
+                </h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button className="btn btn-outline" style={{ fontSize: '11px', padding: '6px 10px' }} onClick={handleCheckReminders} title="Check & send due reminders now">
+                    <i className="fa-solid fa-rotate"></i> Check Now
+                  </button>
+                  <button className="close-modal-btn" onClick={() => setRemindersDrawerOpen(false)}>&times;</button>
+                </div>
+              </div>
+
+              {(reminders || []).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', color: '#94a3b8' }}>
+                  <i className="fa-solid fa-bell-slash" style={{ fontSize: '32px', marginBottom: '12px', display: 'block' }}></i>
+                  <p>No reminders set yet.<br />Click the 🔔 bell icon on any lead to create one.</p>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {(reminders || []).map((rem) => (
+                    <div key={rem._id} style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px', background: rem.status === 'sent' ? '#f0fdf4' : '#fffbeb', position: 'relative' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>{rem.company}</span>
+                        <span style={{ fontSize: '10px', fontWeight: 700, padding: '3px 8px', borderRadius: '12px', background: rem.status === 'sent' ? '#dcfce7' : rem.status === 'cancelled' ? '#fee2e2' : '#fef3c7', color: rem.status === 'sent' ? '#166534' : rem.status === 'cancelled' ? '#991b1b' : '#92400e', textTransform: 'uppercase' }}>
+                          {rem.status}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '13px', color: '#334155', margin: '0 0 8px 0', lineHeight: 1.4 }}>{rem.reminderMessage}</p>
+                      <div style={{ fontSize: '12px', color: '#64748b', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                        <span><i className="fa-solid fa-calendar" style={{ marginRight: '4px' }}></i>{rem.reminderDateIST}</span>
+                        <span><i className="fa-solid fa-clock" style={{ marginRight: '4px' }}></i>{rem.reminderTimeIST} IST</span>
+                        <span><i className="fa-solid fa-envelope" style={{ marginRight: '4px' }}></i>{rem.recipientEmail}</span>
+                      </div>
+                      {rem.status === 'pending' && (
+                        <button onClick={() => handleDeleteReminder(rem._id)} style={{ position: 'absolute', top: '10px', right: '10px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '14px', padding: '4px' }} title="Delete Reminder">
+                          <i className="fa-solid fa-trash-can"></i>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
