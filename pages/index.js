@@ -1044,6 +1044,11 @@ export default function Home() {
                 <span>Analytics & Intelligence</span>
               </button>
 
+              <button className={`nav-item ${currentTab === 'scorecard' ? 'active' : ''}`} onClick={() => { setCurrentTab('scorecard'); setMobileMenuOpen(false); }}>
+                <i className="fa-solid fa-square-poll-vertical" style={{ color: '#10b981' }}></i>
+                <span>Weekly Sales Scorecard</span>
+              </button>
+
               <button className="nav-item" onClick={() => { setRemindersDrawerOpen(true); setMobileMenuOpen(false); }}>
                 <i className="fa-solid fa-bell" style={{ color: '#f59e0b' }}></i>
                 <span>My Reminders ({(reminders || []).filter(r => r && r.status === 'pending').length})</span>
@@ -1317,9 +1322,11 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Analytics & Intelligence Page vs Kanban vs Table */}
+          {/* Analytics & Intelligence Page vs Scorecard vs Kanban vs Table */}
           {currentTab === 'analytics' ? (
             <AnalyticsDashboard leads={leads} />
+          ) : currentTab === 'scorecard' ? (
+            <WeeklyScorecard leads={leads} />
           ) : currentTab === 'kanban' ? (
             <KanbanView
               leads={sortedLeads}
@@ -2582,6 +2589,9 @@ function AnalyticsDashboard({ leads }) {
         <button className={`analytics-tab-btn ${subTab === 'lead_wise' ? 'active' : ''}`} onClick={() => setSubTab('lead_wise')}>
           <i className="fa-solid fa-users-viewfinder"></i> Lead & Source Intelligence
         </button>
+        <button className={`analytics-tab-btn ${subTab === 'scorecard' ? 'active' : ''}`} onClick={() => setSubTab('scorecard')}>
+          <i className="fa-solid fa-square-poll-vertical" style={{ color: '#10b981' }}></i> Weekly Scorecard
+        </button>
       </div>
 
       <div className="analytics-kpi-grid">
@@ -2617,6 +2627,10 @@ function AnalyticsDashboard({ leads }) {
           <span style={{ fontSize: '11px', color: '#94a3b8' }}>Distinct Event Dates</span>
         </div>
       </div>
+
+      {subTab === 'scorecard' && (
+        <WeeklyScorecard leads={activeLeads} />
+      )}
 
       {subTab === 'overview' && (
         <div className="analytics-grid">
@@ -2866,6 +2880,363 @@ function AnalyticsDashboard({ leads }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Weekly Sales Scorecard Component
+function WeeklyScorecard({ leads }) {
+  const [scorecardLeads, setScorecardLeads] = useState(leads || []);
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
+
+  useEffect(() => {
+    const loadRealtimeData = async () => {
+      try {
+        const res = await fetch('/api/leads?tab=all', {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('crm_token') || ''}`
+          }
+        });
+        const data = await res.json();
+        if (data.success && data.leads) {
+          setScorecardLeads(data.leads);
+        }
+      } catch (err) {
+        console.error('Scorecard load error:', err);
+      }
+    };
+    loadRealtimeData();
+  }, []);
+
+  const activeLeads = scorecardLeads.length > 0 ? scorecardLeads : leads;
+
+  // Helper: Generate past 8 week ranges (Monday to Sunday)
+  const getWeekOptions = () => {
+    const weeks = [];
+    const now = new Date();
+    const currentMonday = new Date(now);
+    const dayOfWeek = currentMonday.getDay();
+    const distanceToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    currentMonday.setDate(currentMonday.getDate() + distanceToMonday);
+    currentMonday.setHours(0, 0, 0, 0);
+
+    for (let i = 0; i < 8; i++) {
+      const start = new Date(currentMonday);
+      start.setDate(start.getDate() - i * 7);
+
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+
+      const startStr = `${String(start.getDate()).padStart(2, '0')}/${String(start.getMonth() + 1).padStart(2, '0')}/${start.getFullYear()}`;
+      const endStr = `${String(end.getDate()).padStart(2, '0')}/${String(end.getMonth() + 1).padStart(2, '0')}/${end.getFullYear()}`;
+
+      const label = i === 0 ? `Current Week (${startStr} - ${endStr})` :
+                    i === 1 ? `Last Week (${startStr} - ${endStr})` :
+                    `Week -${i} (${startStr} - ${endStr})`;
+
+      weeks.push({ index: i, start, end, startStr, endStr, label });
+    }
+    return weeks;
+  };
+
+  const weekOptions = getWeekOptions();
+  const activeWeek = weekOptions[selectedWeekIndex] || weekOptions[0];
+
+  const parseLeadDate = (dateVal) => {
+    if (!dateVal) return null;
+    const str = String(dateVal).trim();
+    const dmy = str.match(/^(\d{1,2})[-/. ](\d{1,2})[-/. ](\d{4})/);
+    if (dmy) {
+      return new Date(parseInt(dmy[3], 10), parseInt(dmy[2], 10) - 1, parseInt(dmy[1], 10));
+    }
+    const ymd = str.match(/^(\d{4})[-/. ](\d{1,2})[-/. ](\d{1,2})/);
+    if (ymd) {
+      return new Date(parseInt(ymd[1], 10), parseInt(ymd[2], 10) - 1, parseInt(ymd[3], 10));
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const weekLeads = activeLeads.filter(l => {
+    const dAdded = parseLeadDate(l.date_added);
+    const dFollow = parseLeadDate(l.follow_up_dates);
+    const dReach = parseLeadDate(l.reachout_date);
+
+    const checkRange = (d) => d && d >= activeWeek.start && d <= activeWeek.end;
+    return checkRange(dAdded) || checkRange(dFollow) || checkRange(dReach);
+  });
+
+  const leadsAdded = activeLeads.filter(l => {
+    const d = parseLeadDate(l.date_added);
+    return d && d >= activeWeek.start && d <= activeWeek.end;
+  }).length;
+
+  const meetingsBooked = activeLeads.filter(l => {
+    const st = (l.status || '').toLowerCase();
+    const nst = (l.new_status || '').toLowerCase();
+    const act = (l.next_action || '').toLowerCase();
+    const notes = (l.notes || '').toLowerCase();
+    const isM = st.includes('meeting') || nst.includes('meeting') || act.includes('meeting') || notes.includes('meeting');
+    const d = parseLeadDate(l.follow_up_dates || l.reachout_date || l.date_added);
+    return isM && d && d >= activeWeek.start && d <= activeWeek.end;
+  }).length;
+
+  const contactedLeads = activeLeads.filter(l => {
+    const st = (l.status || '').toLowerCase();
+    const isEngaged = st !== 'new' && st !== '';
+    const d = parseLeadDate(l.reachout_date || l.date_added);
+    return isEngaged && d && d >= activeWeek.start && d <= activeWeek.end;
+  }).length;
+
+  const dealsWon = activeLeads.filter(l => {
+    const st = (l.status || '').toLowerCase();
+    const d = parseLeadDate(l.date_added || l.follow_up_dates);
+    return st === 'won' && d && d >= activeWeek.start && d <= activeWeek.end;
+  }).length;
+
+  const hotLeadsAdded = activeLeads.filter(l => {
+    let raw = l.score_of_client;
+    let score = 5;
+    if (typeof raw === 'number') score = raw;
+    else if (raw) {
+      const match = String(raw).match(/\d+/);
+      if (match) score = parseInt(match[0], 10);
+    }
+    const d = parseLeadDate(l.date_added);
+    return score >= 8 && d && d >= activeWeek.start && d <= activeWeek.end;
+  }).length;
+
+  const scoreLeadsPart = Math.min(Math.round((leadsAdded / 10) * 30), 30);
+  const scoreContactedPart = Math.min(Math.round((contactedLeads / 10) * 30), 30);
+  const scoreMeetingsPart = Math.min(Math.round((meetingsBooked / 3) * 30), 30);
+  const scoreHotPart = Math.min(Math.round((hotLeadsAdded / 2) * 10), 10);
+
+  const totalWeeklyScore = Math.min(scoreLeadsPart + scoreContactedPart + scoreMeetingsPart + scoreHotPart, 100);
+
+  let grade = 'B';
+  let gradeColor = '#6366f1';
+  let gradeLabel = 'Good Progress';
+  if (totalWeeklyScore >= 90) { grade = 'A+'; gradeColor = '#10b981'; gradeLabel = 'Exceptional Sales Week'; }
+  else if (totalWeeklyScore >= 75) { grade = 'A'; gradeColor = '#059669'; gradeLabel = 'High Performing Week'; }
+  else if (totalWeeklyScore >= 60) { grade = 'B'; gradeColor = '#6366f1'; gradeLabel = 'On Track / Steady'; }
+  else if (totalWeeklyScore >= 40) { grade = 'C'; gradeColor = '#f59e0b'; gradeLabel = 'Needs Outreach Boost'; }
+  else { grade = 'D'; gradeColor = '#ef4444'; gradeLabel = 'Below Weekly Target'; }
+
+  const agentMap = {};
+  weekLeads.forEach(l => {
+    const agent = l.assigned_to || 'Sales Team';
+    if (!agentMap[agent]) {
+      agentMap[agent] = { leadsAdded: 0, meetings: 0, contacted: 0, dealsWon: 0 };
+    }
+    const dAdded = parseLeadDate(l.date_added);
+    if (dAdded && dAdded >= activeWeek.start && dAdded <= activeWeek.end) {
+      agentMap[agent].leadsAdded++;
+    }
+    const st = (l.status || '').toLowerCase();
+    const nst = (l.new_status || '').toLowerCase();
+    const act = (l.next_action || '').toLowerCase();
+    if (st.includes('meeting') || nst.includes('meeting') || act.includes('meeting')) {
+      agentMap[agent].meetings++;
+    }
+    if (st !== 'new' && st !== '') {
+      agentMap[agent].contacted++;
+    }
+    if (st === 'won') {
+      agentMap[agent].dealsWon++;
+    }
+  });
+
+  const agentRows = Object.entries(agentMap);
+
+  const handleExportScorecardCSV = () => {
+    let csvStr = `WEEKLY SALES SCORECARD REPORT\n`;
+    csvStr += `Week Range,${activeWeek.startStr} to ${activeWeek.endStr}\n`;
+    csvStr += `Weekly Performance Grade,${grade} (${totalWeeklyScore}/100 - ${gradeLabel})\n\n`;
+
+    csvStr += `METRIC,ACTUAL VALUE,TARGET,COMPLETION RATE (%)\n`;
+    csvStr += `New Leads Acquired,${leadsAdded},10,${Math.round((leadsAdded / 10) * 100)}%\n`;
+    csvStr += `Contacted / Engaged Leads,${contactedLeads},10,${Math.round((contactedLeads / 10) * 100)}%\n`;
+    csvStr += `Meetings Booked,${meetingsBooked},3,${Math.round((meetingsBooked / 3) * 100)}%\n`;
+    csvStr += `Hot Intent Prospects (Score 8-10),${hotLeadsAdded},2,${Math.round((hotLeadsAdded / 2) * 100)}%\n`;
+    csvStr += `Deals Closed (Won),${dealsWon},1,${dealsWon > 0 ? 100 : 0}%\n\n`;
+
+    csvStr += `AGENT / SALES REP PERFORMANCE MATRIX\n`;
+    csvStr += `Agent Name,Leads Added,Contacted,Meetings Booked,Deals Won\n`;
+    agentRows.forEach(([agentName, stats]) => {
+      csvStr += `"${agentName}",${stats.leadsAdded},${stats.contacted},${stats.meetings},${stats.dealsWon}\n`;
+    });
+
+    const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `Weekly_Sales_Scorecard_${activeWeek.startStr.replace(/\//g, '-')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      {/* Header & Controls */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h2 style={{ fontSize: '22px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <i className="fa-solid fa-square-poll-vertical" style={{ color: '#10b981' }}></i>
+            Weekly Sales Scorecard
+          </h2>
+          <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+            Track weekly activity, team performance, meeting velocity, and target achievements.
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {/* Week Selector Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '8px 14px', borderRadius: '12px' }}>
+            <i className="fa-solid fa-calendar-week" style={{ color: '#6366f1' }}></i>
+            <select
+              value={selectedWeekIndex}
+              onChange={(e) => setSelectedWeekIndex(Number(e.target.value))}
+              style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', fontWeight: 700, cursor: 'pointer', color: 'inherit' }}
+            >
+              {weekOptions.map((opt) => (
+                <option key={opt.index} value={opt.index}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <button
+            className="btn btn-outline"
+            onClick={handleExportScorecardCSV}
+            title="Download Weekly Scorecard Report"
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}
+          >
+            <i className="fa-solid fa-file-arrow-down" style={{ color: '#10b981' }}></i>
+            <span>Export Scorecard</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Grade Banner & Target Score Dial */}
+      <div style={{ background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12))', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: '16px', padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: gradeColor, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
+            <span style={{ fontSize: '28px', fontWeight: 900, lineHeight: 1 }}>{grade}</span>
+            <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', opacity: 0.9 }}>GRADE</span>
+          </div>
+          <div>
+            <span style={{ fontSize: '12px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', color: gradeColor }}>{gradeLabel}</span>
+            <h3 style={{ margin: '4px 0 2px 0', fontSize: '20px', fontWeight: 800 }}>Weekly Target Completion: {totalWeeklyScore}/100</h3>
+            <p style={{ margin: 0, fontSize: '13px', opacity: 0.8 }}>Week Range: <strong>{activeWeek.startStr}</strong> to <strong>{activeWeek.endStr}</strong></p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '24px', borderLeft: '2px solid var(--border-color)', paddingLeft: '24px' }}>
+          <div>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>LEADS TARGET</span>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: leadsAdded >= 10 ? '#10b981' : '#f59e0b' }}>
+              {leadsAdded} / 10
+            </div>
+          </div>
+          <div>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>MEETINGS TARGET</span>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: meetingsBooked >= 3 ? '#10b981' : '#6366f1' }}>
+              {meetingsBooked} / 3
+            </div>
+          </div>
+          <div>
+            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>HOT PROSPECTS</span>
+            <div style={{ fontSize: '18px', fontWeight: 800, color: '#dc2626' }}>
+              {hotLeadsAdded} / 2
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Metric Cards Grid */}
+      <div className="analytics-kpi-grid">
+        <div className="glass" style={{ padding: '20px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Weekly Leads Acquired</span>
+          <h3 style={{ fontSize: '26px', fontWeight: 800, color: '#6366f1', marginTop: '4px' }}>
+            <i className="fa-solid fa-user-plus"></i> {leadsAdded}
+          </h3>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Target: 10 new prospects/week</span>
+        </div>
+
+        <div className="glass" style={{ padding: '20px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Leads Contacted / Engaged</span>
+          <h3 style={{ fontSize: '26px', fontWeight: 800, color: '#0284c7', marginTop: '4px' }}>
+            <i className="fa-solid fa-comments"></i> {contactedLeads}
+          </h3>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Active outreach completed</span>
+        </div>
+
+        <div className="glass" style={{ padding: '20px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Meetings Booked</span>
+          <h3 style={{ fontSize: '26px', fontWeight: 800, color: '#10b981', marginTop: '4px' }}>
+            <i className="fa-solid fa-handshake"></i> {meetingsBooked}
+          </h3>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Target: 3 booked meetings/week</span>
+        </div>
+
+        <div className="glass" style={{ padding: '20px', background: 'var(--bg-secondary)', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
+          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>Deals Won / Closed</span>
+          <h3 style={{ fontSize: '26px', fontWeight: 800, color: '#059669', marginTop: '4px' }}>
+            <i className="fa-solid fa-trophy"></i> {dealsWon}
+          </h3>
+          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Closed revenue deals</span>
+        </div>
+      </div>
+
+      {/* Agent Performance Matrix Table */}
+      <div className="chart-card" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800 }}>
+              <i className="fa-solid fa-users-gear" style={{ color: '#6366f1', marginRight: '8px' }}></i>
+              Sales Rep & Agent Performance Matrix
+            </h3>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>Weekly activity breakdown by team member</span>
+          </div>
+        </div>
+
+        <div className="table-responsive">
+          <table className="leads-table" style={{ width: '100%' }}>
+            <thead>
+              <tr>
+                <th>Sales Rep / Agent</th>
+                <th style={{ textAlign: 'center' }}>Leads Added</th>
+                <th style={{ textAlign: 'center' }}>Contacted</th>
+                <th style={{ textAlign: 'center' }}>Meetings Booked</th>
+                <th style={{ textAlign: 'center' }}>Deals Won</th>
+              </tr>
+            </thead>
+            <tbody>
+              {agentRows.length === 0 ? (
+                <tr>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '24px', color: '#94a3b8' }}>
+                    No rep activity recorded for this week.
+                  </td>
+                </tr>
+              ) : (
+                agentRows.map(([agentName, stats]) => (
+                  <tr key={agentName}>
+                    <td style={{ fontWeight: 700 }}>
+                      <i className="fa-solid fa-user-tie" style={{ marginRight: '8px', color: '#6366f1' }}></i>
+                      {agentName}
+                    </td>
+                    <td style={{ textAlign: 'center', fontWeight: 700, color: '#6366f1' }}>{stats.leadsAdded}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 700, color: '#0284c7' }}>{stats.contacted}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 700, color: '#10b981' }}>{stats.meetings}</td>
+                    <td style={{ textAlign: 'center', fontWeight: 700, color: '#059669' }}>{stats.dealsWon}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
