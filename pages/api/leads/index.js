@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       const cacheKey = `leads_${tab}_${search}_${statusFilter}_${filterDate}`;
       const cached = cacheService.get(cacheKey);
 
-      if (cached) {
+      if (cached && cached.total > 0) {
         return res.status(200).json({ ...cached, cached: true });
       }
 
