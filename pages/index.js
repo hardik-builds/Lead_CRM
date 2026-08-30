@@ -2497,18 +2497,27 @@ function AnalyticsDashboard({ leads }) {
 
   // Scan across status, new_status, next_action, and notes for Meetings
   const isMeeting = (l) => {
-    const st = (l.status || '').toLowerCase();
-    const nst = (l.new_status || '').toLowerCase();
-    const act = (l.next_action || '').toLowerCase();
-    const notes = (l.notes || '').toLowerCase();
+    const st = (l.status || '').toLowerCase().trim();
+    const nst = (l.new_status || '').toLowerCase().trim();
+    const act = (l.next_action || '').toLowerCase().trim();
+    const notes = (l.notes || '').toLowerCase().trim();
+
+    // Explicit user status overrides notes!
+    if (st === 'qualified' || nst.includes('qualified') || st === 'won' || nst.includes('won') || st === 'lost' || nst.includes('lost') || st.includes('not interested') || nst.includes('not interested')) {
+      return false;
+    }
     return st.includes('meeting') || nst.includes('meeting') || act.includes('meeting') || notes.includes('meeting');
   };
 
   // Scan across status, new_status, and notes for Nurture
   const isNurture = (l) => {
-    const st = (l.status || '').toLowerCase();
-    const nst = (l.new_status || '').toLowerCase();
-    const notes = (l.notes || '').toLowerCase();
+    const st = (l.status || '').toLowerCase().trim();
+    const nst = (l.new_status || '').toLowerCase().trim();
+    const notes = (l.notes || '').toLowerCase().trim();
+
+    if (st === 'won' || nst.includes('won') || st === 'lost' || nst.includes('lost') || st === 'qualified' || nst.includes('qualified')) {
+      return false;
+    }
     return st.includes('nurture') || nst.includes('nurture') || st.includes('not interested') || nst.includes('not interested') || notes.includes('not interested');
   };
 
@@ -2887,7 +2896,9 @@ function AnalyticsDashboard({ leads }) {
 // Weekly Sales Scorecard Component
 function WeeklyScorecard({ leads }) {
   const [scorecardLeads, setScorecardLeads] = useState(leads || []);
-  const [selectedWeekIndex, setSelectedWeekIndex] = useState(0);
+  const [selectedWeekIndex, setSelectedWeekIndex] = useState('0');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
 
   useEffect(() => {
     const loadRealtimeData = async () => {
@@ -2936,13 +2947,30 @@ function WeeklyScorecard({ leads }) {
                     i === 1 ? `Last Week (${startStr} - ${endStr})` :
                     `Week -${i} (${startStr} - ${endStr})`;
 
-      weeks.push({ index: i, start, end, startStr, endStr, label });
+      weeks.push({ index: String(i), start, end, startStr, endStr, label });
     }
     return weeks;
   };
 
   const weekOptions = getWeekOptions();
-  const activeWeek = weekOptions[selectedWeekIndex] || weekOptions[0];
+
+  const getActiveWeekRange = () => {
+    if (selectedWeekIndex === 'custom' && customStartDate && customEndDate) {
+      const s = new Date(customStartDate);
+      s.setHours(0, 0, 0, 0);
+      const e = new Date(customEndDate);
+      e.setHours(23, 59, 59, 999);
+
+      const startStr = `${String(s.getDate()).padStart(2, '0')}/${String(s.getMonth() + 1).padStart(2, '0')}/${s.getFullYear()}`;
+      const endStr = `${String(e.getDate()).padStart(2, '0')}/${String(e.getMonth() + 1).padStart(2, '0')}/${e.getFullYear()}`;
+
+      return { start: s, end: e, startStr, endStr, label: `Custom Range (${startStr} - ${endStr})` };
+    }
+    const idx = parseInt(selectedWeekIndex, 10);
+    return weekOptions[isNaN(idx) ? 0 : idx] || weekOptions[0];
+  };
+
+  const activeWeek = getActiveWeekRange();
 
   const parseLeadDate = (dateVal) => {
     if (!dateVal) return null;
@@ -3080,7 +3108,7 @@ function WeeklyScorecard({ leads }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Header & Controls */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+      <div className="scorecard-header-wrapper" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h2 style={{ fontSize: '22px', fontWeight: 800, margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
             <i className="fa-solid fa-square-poll-vertical" style={{ color: '#10b981' }}></i>
@@ -3091,20 +3119,46 @@ function WeeklyScorecard({ leads }) {
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div className="scorecard-controls">
           {/* Week Selector Dropdown */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '8px 14px', borderRadius: '12px' }}>
             <i className="fa-solid fa-calendar-week" style={{ color: '#6366f1' }}></i>
             <select
               value={selectedWeekIndex}
-              onChange={(e) => setSelectedWeekIndex(Number(e.target.value))}
+              onChange={(e) => setSelectedWeekIndex(e.target.value)}
               style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', fontWeight: 700, cursor: 'pointer', color: 'inherit' }}
             >
               {weekOptions.map((opt) => (
                 <option key={opt.index} value={opt.index}>{opt.label}</option>
               ))}
+              <option value="custom">📅 Custom Date Range...</option>
             </select>
           </div>
+
+          {/* Custom Date Range Picker Inputs */}
+          {selectedWeekIndex === 'custom' && (
+            <div className="custom-date-container" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>From:</span>
+                <input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', fontWeight: 700, color: 'inherit' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', padding: '6px 12px', borderRadius: '10px' }}>
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>To:</span>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '12px', fontWeight: 700, color: 'inherit' }}
+                />
+              </div>
+            </div>
+          )}
 
           <button
             className="btn btn-outline"
@@ -3119,9 +3173,9 @@ function WeeklyScorecard({ leads }) {
       </div>
 
       {/* Grade Banner & Target Score Dial */}
-      <div style={{ background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12))', border: '1px solid rgba(99, 102, 241, 0.25)', borderRadius: '16px', padding: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: gradeColor, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
+      <div className="scorecard-banner">
+        <div className="scorecard-banner-left">
+          <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: gradeColor, color: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', flexShrink: 0 }}>
             <span style={{ fontSize: '28px', fontWeight: 900, lineHeight: 1 }}>{grade}</span>
             <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', opacity: 0.9 }}>GRADE</span>
           </div>
@@ -3132,7 +3186,7 @@ function WeeklyScorecard({ leads }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '24px', borderLeft: '2px solid var(--border-color)', paddingLeft: '24px' }}>
+        <div className="scorecard-banner-right">
           <div>
             <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 700 }}>LEADS TARGET</span>
             <div style={{ fontSize: '18px', fontWeight: 800, color: leadsAdded >= 10 ? '#10b981' : '#f59e0b' }}>
@@ -3201,7 +3255,7 @@ function WeeklyScorecard({ leads }) {
           </div>
         </div>
 
-        <div className="table-responsive">
+        <div className="scorecard-table-responsive">
           <table className="leads-table" style={{ width: '100%' }}>
             <thead>
               <tr>

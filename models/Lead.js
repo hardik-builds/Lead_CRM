@@ -51,4 +51,4 @@ LeadSchema.pre('save', function(next) {
   next();
 });
 
-export default mongoose.models.Lead || mongoose.model('Lead', LeadSchema);
+export default mongoose.models.Lead || mongoose.model('Lead', LeadSchema, 'leads');

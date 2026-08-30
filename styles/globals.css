@@ -1554,3 +1554,118 @@ html, body {
     gap: 10px;
   }
 }
+
+/* WEEKLY SALES SCORECARD RESPONSIVE MOBILE STYLES */
+.scorecard-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.scorecard-banner {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12));
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.scorecard-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.scorecard-banner-right {
+  display: flex;
+  gap: 24px;
+  border-left: 2px solid var(--border-color);
+  padding-left: 24px;
+}
+
+.scorecard-table-responsive {
+  display: block !important;
+  width: 100%;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+@media (max-width: 768px) {
+  .scorecard-header-wrapper {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .scorecard-controls {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .scorecard-controls > div,
+  .scorecard-controls button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .scorecard-banner {
+    flex-direction: column;
+    align-items: flex-start !important;
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .scorecard-banner-left {
+    gap: 14px;
+  }
+
+  .scorecard-banner-right {
+    border-left: none !important;
+    border-top: 1px solid var(--border-color);
+    padding-left: 0 !important;
+    padding-top: 14px;
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .scorecard-banner-right > div {
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .custom-date-container {
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+
+  .custom-date-container > div {
+    width: 100% !important;
+    justify-content: space-between !important;
+  }
+
+  .scorecard-banner-right {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .scorecard-banner-right > div {
+    background: rgba(0, 0, 0, 0.05);
+    padding: 8px 4px;
+    border-radius: 8px;
+  }
+
+  .scorecard-banner-right span {
+    font-size: 9px !important;
+  }
+
+  .scorecard-banner-right div div {
+    font-size: 15px !important;
+  }
+}

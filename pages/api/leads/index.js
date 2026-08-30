@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import dbConnect from '../../../lib/dbConnect';
 import Lead from '../../../models/Lead';
 import cacheService from '../../../lib/cacheService';
@@ -49,12 +50,8 @@ export default async function handler(req, res) {
       const statusFilter = req.query.status || '';
       const filterDate = req.query.filterDate || '';
 
-      const cacheKey = `leads_${tab}_${search}_${statusFilter}_${filterDate}`;
-      const cached = cacheService.get(cacheKey);
-
-      if (cached && cached.total > 0) {
-        return res.status(200).json({ ...cached, cached: true });
-      }
+      // Always fetch 100% fresh real-time leads directly from MongoDB Atlas
+      cacheService.flush();
 
       let query = {};
       const todayStr = new Date().toISOString().split('T')[0];
@@ -105,19 +102,23 @@ export default async function handler(req, res) {
         const fu = (l.follow_up_dates || '').toLowerCase().trim();
         const notes = (l.notes || '').toLowerCase().trim();
 
-        if (st === 'won') return 'won';
-        if (st === 'lost') return 'lost';
-
-        // Rule 1: Automatic 30-Day Follow-up Gap Rule (>= 30 days gap automatically goes to Nurture List)
-        if (l.follow_up_dates) {
-          const iso = normalizeToISO(l.follow_up_dates);
-          if (iso) {
-            const diffDays = Math.ceil((new Date(iso) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
-            if (diffDays >= 30) return 'nurture';
-          }
+        // 1. Explicit Status / New Status Assigned by User (HIGHEST PRIORITY OVER NOTES!)
+        if (st === 'won' || nst === 'won' || st.includes('won') || nst.includes('won')) return 'won';
+        if (st === 'lost' || nst === 'lost' || st.includes('lost') || nst.includes('lost')) return 'lost';
+        if (st.includes('not interested') || nst.includes('not interested') || st.includes('hung up') || nst.includes('hung up') || st.includes('rude') || nst.includes('rude')) {
+          return 'not_interested';
+        }
+        if (st === 'qualified' || nst.includes('qualified')) {
+          return 'qualified';
+        }
+        if (st.includes('meeting') || nst.includes('meeting') || st.includes('demo') || nst.includes('demo')) {
+          return 'meetings';
+        }
+        if (st.includes('nurture') || nst.includes('nurture')) {
+          return 'nurture';
         }
 
-        // Rule 2: Follow Next Action column for primary categorization!
+        // 2. Next Action column
         if (act.includes('meet') || act.includes('meeting') || act.includes('demo') || act.includes('zoom')) {
           return 'meetings';
         }
@@ -128,18 +129,26 @@ export default async function handler(req, res) {
           return 'not_interested';
         }
 
-        // Rule 3: Check Status / New Status / Notes columns for clarity!
-        if (st.includes('meeting') || nst.includes('meeting') || notes.includes('meeting')) {
-          return 'meetings';
-        }
-        if (st.includes('nurture') || nst.includes('nurture') || notes.includes('nurture') || fu.includes('switched off') || fu.includes('after finding')) {
-          return 'nurture';
-        }
-        if (st.includes('hung up') || nst.includes('hung up') || notes.includes('hung up') || st.includes('rude') || nst.includes('rude') || st.includes('not interested') || nst.includes('not interested') || fu.includes('not interested')) {
-          return 'not_interested';
+        // 3. Automatic 30-Day Follow-up Gap Rule (>= 30 days gap automatically goes to Nurture List)
+        if (l.follow_up_dates) {
+          const iso = normalizeToISO(l.follow_up_dates);
+          if (iso) {
+            const diffDays = Math.ceil((new Date(iso) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
+            if (diffDays >= 30) return 'nurture';
+          }
         }
 
-        if (st === 'qualified' || nst.includes('qualified') || notes.includes('qualified')) {
+        // 4. Notes column keyword fallback (Only if Status was NOT explicitly set above!)
+        if (notes.includes('meeting') || notes.includes('demo') || notes.includes('zoom')) {
+          return 'meetings';
+        }
+        if (notes.includes('nurture') || fu.includes('switched off') || fu.includes('after finding')) {
+          return 'nurture';
+        }
+        if (notes.includes('hung up') || notes.includes('not interested') || fu.includes('not interested')) {
+          return 'not_interested';
+        }
+        if (notes.includes('qualified')) {
           return 'qualified';
         }
 
@@ -222,7 +231,6 @@ export default async function handler(req, res) {
         }
       };
 
-      cacheService.set(cacheKey, responsePayload);
       return res.status(200).json(responsePayload);
     } catch (err) {
       console.error('API /leads GET error:', err);
