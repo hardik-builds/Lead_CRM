@@ -247,20 +247,21 @@ export default function Home() {
     const savedTheme = localStorage.getItem('crm_theme');
     if (savedTheme === 'dark') {
       setDarkMode(true);
-      document.body.classList.add('dark-mode');
     }
   }, []);
 
-  const toggleTheme = () => {
-    const nextMode = !darkMode;
-    setDarkMode(nextMode);
-    if (nextMode) {
+  useEffect(() => {
+    if (darkMode) {
       document.body.classList.add('dark-mode');
       localStorage.setItem('crm_theme', 'dark');
     } else {
       document.body.classList.remove('dark-mode');
       localStorage.setItem('crm_theme', 'light');
     }
+  }, [darkMode]);
+
+  const toggleTheme = () => {
+    setDarkMode(prev => !prev);
   };
 
   useEffect(() => {
@@ -1013,88 +1014,119 @@ export default function Home() {
         {/* Sidebar Navigation */}
         <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
           <div>
-            <div className="brand">
-              <div className="logo-icon">
-                <i className="fa-solid fa-chart-line"></i>
+            <div className="brand" style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '12px', borderBottom: '1px solid var(--border-color)', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div className="logo-icon">
+                  <i className="fa-solid fa-bolt"></i>
+                </div>
+                <div className="brand-text">
+                  <h2 style={{ fontSize: '17px', fontWeight: 800, letterSpacing: '-0.3px', margin: 0 }}>LeadPulse CRM</h2>
+                  <span style={{ fontSize: '11px', color: '#6366f1', fontWeight: 700 }}>v3.0 Executive Edition</span>
+                </div>
               </div>
-              <div className="brand-text">
-                <h2>LeadPulse CRM</h2>
-                <span>Logged in: {loggedInUserEmail}</span>
+              
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
+                <div className="live-status-pill">
+                  <span className="live-status-dot"></span>
+                  <span>Atlas Live</span>
+                </div>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>{loggedInUserEmail}</span>
               </div>
             </div>
 
             <nav className="nav-menu">
-              <button className={`nav-item ${currentTab === 'all' ? 'active' : ''}`} onClick={() => { setCurrentTab('all'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-list-check"></i>
-                <span>All Leads</span>
-                <span className="badge">{kpis.totalLeads}</span>
-              </button>
+              {/* SECTION 1: WORKFLOW & ANALYTICS */}
+              <div className="sidebar-section-card">
+                <div className="sidebar-section-header">
+                  <span>📊 Overview & Intelligence</span>
+                </div>
 
-              <button className={`nav-item ${currentTab === 'new' ? 'active' : ''}`} onClick={() => { setCurrentTab('new'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-star" style={{ color: '#10b981' }}></i>
-                <span>Fresh New Leads</span>
-                <span className="badge" style={{ background: '#d1fae5', color: '#047857' }}>{kpis.newLeadsCount}</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'all' ? 'active' : ''}`} onClick={() => { setCurrentTab('all'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-list-check" style={{ color: '#6366f1' }}></i>
+                  <span>All Leads Database</span>
+                  <span className="badge">{kpis.totalLeads}</span>
+                </button>
 
-              <button className={`nav-item ${currentTab === 'contacted' ? 'active' : ''}`} onClick={() => { setCurrentTab('contacted'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-comments" style={{ color: '#0284c7' }}></i>
-                <span>Contacted Leads</span>
-                <span className="badge" style={{ background: '#e0f2fe', color: '#0369a1' }}>{kpis.contactedCount}</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'kanban' ? 'active' : ''}`} onClick={() => { setCurrentTab('kanban'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-table-columns" style={{ color: '#818cf8' }}></i>
+                  <span>Kanban Deal Pipeline</span>
+                </button>
 
-              <button className={`nav-item ${currentTab === 'meetings' ? 'active' : ''}`} onClick={() => { setCurrentTab('meetings'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-handshake" style={{ color: '#7e22ce' }}></i>
-                <span>Meetings Scheduled</span>
-                <span className="badge" style={{ background: '#f3e8ff', color: '#6b21a8' }}>{kpis.meetingsCount}</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'scorecard' ? 'active' : ''}`} onClick={() => { setCurrentTab('scorecard'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-square-poll-vertical" style={{ color: '#10b981' }}></i>
+                  <span>Weekly Sales Scorecard</span>
+                </button>
 
-              <button className={`nav-item ${currentTab === 'qualified' ? 'active' : ''}`} onClick={() => { setCurrentTab('qualified'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-award" style={{ color: '#4f46e5' }}></i>
-                <span>Qualified Opportunities</span>
-                <span className="badge" style={{ background: '#e0e7ff', color: '#4338ca' }}>{kpis.qualifiedCount}</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'analytics' ? 'active' : ''}`} onClick={() => { setCurrentTab('analytics'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-chart-pie" style={{ color: '#06b6d4' }}></i>
+                  <span>Analytics & Funnel</span>
+                </button>
+              </div>
 
-              <button className={`nav-item ${currentTab === 'nurture' ? 'active' : ''}`} onClick={() => { setCurrentTab('nurture'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-seedling" style={{ color: '#059669' }}></i>
-                <span>Nurture List</span>
-                <span className="badge" style={{ background: '#ecfdf5', color: '#047857' }}>{kpis.nurtureCount}</span>
-              </button>
+              {/* SECTION 2: LEAD PIPELINE STAGES */}
+              <div className="sidebar-section-card">
+                <div className="sidebar-section-header">
+                  <span>📥 Pipeline Deal Stages</span>
+                </div>
 
-              <button className={`nav-item ${currentTab === 'not_interested' ? 'active' : ''}`} onClick={() => { setCurrentTab('not_interested'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-ban" style={{ color: '#ef4444' }}></i>
-                <span style={{ color: '#b91c1c', fontWeight: 700 }}>Not Interested</span>
-                <span className="badge" style={{ background: '#fee2e2', color: '#b91c1c' }}>{kpis.notInterestedCount}</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'new' ? 'active' : ''}`} onClick={() => { setCurrentTab('new'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-star" style={{ color: '#10b981' }}></i>
+                  <span>Fresh New Leads</span>
+                  <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#059669' }}>{kpis.newLeadsCount}</span>
+                </button>
 
-              <button className={`nav-item ${currentTab === 'today' ? 'active' : ''}`} onClick={() => { setCurrentTab('today'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-clock-rotate-left" style={{ color: '#d97706' }}></i>
-                <span style={{ color: '#92400e', fontWeight: 700 }}>Today's Follow-ups</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'contacted' ? 'active' : ''}`} onClick={() => { setCurrentTab('contacted'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-comments" style={{ color: '#0284c7' }}></i>
+                  <span>Contacted Outreach</span>
+                  <span className="badge" style={{ background: 'rgba(2, 132, 199, 0.15)', color: '#0284c7' }}>{kpis.contactedCount}</span>
+                </button>
 
-              <button className={`nav-item ${currentTab === 'overdue' ? 'active' : ''}`} onClick={() => { setCurrentTab('overdue'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-triangle-exclamation" style={{ color: '#dc2626' }}></i>
-                <span style={{ color: '#991b1b', fontWeight: 700 }}>Overdue Follow-ups</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'meetings' ? 'active' : ''}`} onClick={() => { setCurrentTab('meetings'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-handshake" style={{ color: '#7e22ce' }}></i>
+                  <span>Meetings Scheduled</span>
+                  <span className="badge" style={{ background: 'rgba(126, 34, 206, 0.15)', color: '#7e22ce' }}>{kpis.meetingsCount}</span>
+                </button>
 
-              <button className={`nav-item ${currentTab === 'kanban' ? 'active' : ''}`} onClick={() => { setCurrentTab('kanban'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-table-columns" style={{ color: '#4f46e5' }}></i>
-                <span>Kanban Pipeline</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'qualified' ? 'active' : ''}`} onClick={() => { setCurrentTab('qualified'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-award" style={{ color: '#4f46e5' }}></i>
+                  <span>Qualified Prospects</span>
+                  <span className="badge" style={{ background: 'rgba(79, 70, 229, 0.15)', color: '#4f46e5' }}>{kpis.qualifiedCount}</span>
+                </button>
 
-              <button className={`nav-item ${currentTab === 'analytics' ? 'active' : ''}`} onClick={() => { setCurrentTab('analytics'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-chart-pie"></i>
-                <span>Analytics & Intelligence</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'nurture' ? 'active' : ''}`} onClick={() => { setCurrentTab('nurture'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-seedling" style={{ color: '#059669' }}></i>
+                  <span>Nurture List (Monthly)</span>
+                  <span className="badge" style={{ background: 'rgba(5, 150, 105, 0.15)', color: '#059669' }}>{kpis.nurtureCount}</span>
+                </button>
 
-              <button className={`nav-item ${currentTab === 'scorecard' ? 'active' : ''}`} onClick={() => { setCurrentTab('scorecard'); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-square-poll-vertical" style={{ color: '#10b981' }}></i>
-                <span>Weekly Sales Scorecard</span>
-              </button>
+                <button className={`nav-item ${currentTab === 'not_interested' ? 'active' : ''}`} onClick={() => { setCurrentTab('not_interested'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-ban" style={{ color: '#ef4444' }}></i>
+                  <span>Not Interested</span>
+                  <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#dc2626' }}>{kpis.notInterestedCount}</span>
+                </button>
+              </div>
 
-              <button className="nav-item" onClick={() => { setRemindersDrawerOpen(true); setMobileMenuOpen(false); }}>
-                <i className="fa-solid fa-bell" style={{ color: '#f59e0b' }}></i>
-                <span>My Reminders ({(reminders || []).filter(r => r && r.status === 'pending').length})</span>
-              </button>
+              {/* SECTION 3: ACTION REMINDERS & FOLLOW-UPS */}
+              <div className="sidebar-section-card">
+                <div className="sidebar-section-header">
+                  <span>⚡ Actions & Reminders</span>
+                </div>
+
+                <button className={`nav-item ${currentTab === 'today' ? 'active' : ''}`} onClick={() => { setCurrentTab('today'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-clock-rotate-left" style={{ color: '#d97706' }}></i>
+                  <span>Today's Follow-ups</span>
+                </button>
+
+                <button className={`nav-item ${currentTab === 'overdue' ? 'active' : ''}`} onClick={() => { setCurrentTab('overdue'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-triangle-exclamation" style={{ color: '#dc2626' }}></i>
+                  <span>Overdue Follow-ups</span>
+                </button>
+
+                <button className="nav-item" onClick={() => { setRemindersDrawerOpen(true); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-bell" style={{ color: '#f59e0b' }}></i>
+                  <span>My Reminders ({(reminders || []).filter(r => r && r.status === 'pending').length})</span>
+                </button>
+              </div>
             </nav>
           </div>
 
@@ -1158,30 +1190,20 @@ export default function Home() {
         <main className="main-content">
           {/* Topbar Universal Search & Date Picker Filter */}
           <header className="topbar">
-            <div className="topbar-search" style={{ display: 'flex', gap: '10px', flex: 1, maxWidth: '600px', minWidth: '300px' }}>
-              <div style={{ position: 'relative', width: '100%', flex: 1 }}>
-                <i className="fa-solid fa-magnifying-glass search-icon" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: darkMode ? '#94a3b8' : '#64748b', zIndex: 2 }}></i>
+            <div className="topbar-search-container">
+              <div className="search-input-box">
+                <i className="fa-solid fa-magnifying-glass search-input-icon"></i>
                 <input
                   type="text"
-                  placeholder="Search by Company, Founder, Phone, Email, City, or Date..."
+                  className="search-field-input"
+                  placeholder="Search Company, Founder, Phone, Email, City..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 36px 12px 42px',
-                    background: darkMode ? '#1e293b' : '#ffffff',
-                    border: `1px solid ${darkMode ? '#334155' : '#cbd5e1'}`,
-                    borderRadius: '12px',
-                    fontSize: '14px',
-                    fontWeight: 600,
-                    color: darkMode ? '#f8fafc' : '#0f172a',
-                    outline: 'none'
-                  }}
                 />
                 {search && (
                   <button
                     onClick={() => setSearch('')}
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', cursor: 'pointer', color: darkMode ? '#94a3b8' : '#64748b', fontSize: '16px', zIndex: 3 }}
+                    className="clear-search-btn"
                     title="Clear search"
                   >
                     &times;
@@ -1190,18 +1212,18 @@ export default function Home() {
               </div>
 
               {/* Exact Date Picker Input */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: darkMode ? '#1e293b' : '#fff', border: `1px solid ${darkMode ? '#334155' : 'var(--border-color)'}`, borderRadius: '12px', padding: '0 12px' }}>
-                <i className="fa-solid fa-calendar" style={{ color: '#4f46e5', fontSize: '14px' }}></i>
+              <div className="date-filter-box">
+                <i className="fa-solid fa-calendar" style={{ color: '#6366f1', fontSize: '13px' }}></i>
                 <input
                   type="text"
                   placeholder="Filter Date (DD/MM/YYYY)"
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  style={{ border: 'none', background: 'transparent', fontSize: '13px', outline: 'none', color: darkMode ? '#f8fafc' : '#0f172a', fontWeight: 600, width: '170px' }}
+                  className="date-field-input"
                   title="Filter Leads by Date (DD/MM/YYYY)"
                 />
                 {filterDate && (
-                  <button onClick={() => setFilterDate('')} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '14px' }}>&times;</button>
+                  <button onClick={() => setFilterDate('')} className="clear-search-btn">&times;</button>
                 )}
               </div>
             </div>
@@ -1282,10 +1304,10 @@ export default function Home() {
           </header>
 
           {/* Professional Status Legend Bar */}
-          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', padding: '14px 20px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div className="active-filters-bar" style={{ background: darkMode ? '#131926' : '#ffffff', border: `1px solid ${darkMode ? '#232d42' : '#e2e8f0'}`, padding: '14px 20px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <i className="fa-solid fa-filter" style={{ color: '#4f46e5', fontSize: '16px' }}></i>
-              <strong style={{ color: '#0f172a', fontSize: '14px' }}>Priority Filters:</strong>
+              <i className="fa-solid fa-filter" style={{ color: '#6366f1', fontSize: '16px' }}></i>
+              <strong style={{ color: darkMode ? '#f8fafc' : '#0f172a', fontSize: '14px' }}>Priority Filters:</strong>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -1435,7 +1457,7 @@ export default function Home() {
                     <table className="leads-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '36px', textAlign: 'center' }}>
+                          <th style={{ minWidth: '46px', width: '46px', textAlign: 'center', whiteSpace: 'nowrap' }}>
                             <input
                               type="checkbox"
                               checked={selectedLeadIds.length === sortedLeads.length && sortedLeads.length > 0}
@@ -1444,18 +1466,18 @@ export default function Home() {
                               style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#4f46e5' }}
                             />
                           </th>
-                          <th style={{ width: '40px' }}>#</th>
-                          <th>Company & Location</th>
-                          <th>Founder & Contact</th>
-                          <th>Pain Point & Notes</th>
-                          <th>Score</th>
-                          <th>Status</th>
-                          <th>Next Action</th>
-                          <th>Outreach Date (DD/MM/YYYY)</th>
-                          <th>Follow-up Date (DD/MM/YYYY)</th>
-                          <th>Date Added (DD/MM/YYYY)</th>
-                          <th>Agent & Source</th>
-                          <th>Actions</th>
+                          <th style={{ minWidth: '55px', width: '55px', textAlign: 'center', whiteSpace: 'nowrap' }}>#</th>
+                          <th style={{ minWidth: '180px' }}>Company & Location</th>
+                          <th style={{ minWidth: '180px' }}>Founder & Contact</th>
+                          <th style={{ minWidth: '220px', maxWidth: '260px' }}>Notes & History</th>
+                          <th style={{ minWidth: '110px', textAlign: 'center' }}>Score</th>
+                          <th style={{ minWidth: '150px' }}>Status</th>
+                          <th style={{ minWidth: '180px' }}>Next Action</th>
+                          <th style={{ minWidth: '130px' }}>Outreach Date</th>
+                          <th style={{ minWidth: '140px' }}>Follow-up Date</th>
+                          <th style={{ minWidth: '120px' }}>Date Added</th>
+                          <th style={{ minWidth: '140px' }}>Agent & Source</th>
+                          <th style={{ minWidth: '180px', textAlign: 'center' }}>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1482,7 +1504,7 @@ export default function Home() {
 
                             return (
                               <tr key={leadId} className={`${rowHighlightClass} ${isSelected ? 'row-selected' : ''}`} style={isSelected ? { background: '#eef2ff' } : {}}>
-                                <td style={{ textAlign: 'center' }}>
+                                <td style={{ textAlign: 'center', minWidth: '46px', width: '46px', whiteSpace: 'nowrap' }}>
                                   <input
                                     type="checkbox"
                                     checked={isSelected}
@@ -1490,7 +1512,7 @@ export default function Home() {
                                     style={{ cursor: 'pointer', width: '16px', height: '16px', accentColor: '#4f46e5' }}
                                   />
                                 </td>
-                                <td style={{ fontWeight: 700, color: 'var(--text-dim)' }}>{index + 1}</td>
+                                <td style={{ fontWeight: 800, color: 'var(--text-dim)', textAlign: 'center', minWidth: '55px', width: '55px', whiteSpace: 'nowrap' }}>{index + 1}</td>
                                 <td>
                                   <div className="company-cell">
                                     <span className="company-name">{lead.company}</span>
