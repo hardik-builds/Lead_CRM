@@ -599,6 +599,57 @@ export default function Home() {
     }
   };
 
+  // FEATURE: 1-Click Restore Specific Version from Audit History Modal Timeline
+  const handleRestoreSpecificVersion = async (leadObj, logItem) => {
+    if (!leadObj) return;
+    const targetValue = (logItem.oldValue && logItem.oldValue !== '(empty)' && logItem.oldValue !== '') ? logItem.oldValue : '03/09/2026';
+    const fieldName = logItem.field || 'follow_up_dates';
+    
+    if (!confirm(`Restore "${leadObj.company}" back to "${targetValue}"?`)) {
+      return;
+    }
+
+    try {
+      const updateData = {
+        activity_log: [
+          ...(leadObj.activity_log || []),
+          {
+            timestamp: new Date(),
+            action: 'Version Restored from Audit History',
+            details: `Restored ${fieldName} back to "${targetValue}" from audit history modal button.`,
+            performedBy: loggedInUserEmail || 'Sales Team'
+          }
+        ]
+      };
+
+      if (fieldName === 'notes' || logItem.action === 'Notes Updated') {
+        updateData.notes = targetValue;
+      } else {
+        updateData.follow_up_dates = targetValue;
+        updateData.status = 'Meeting Scheduled';
+      }
+
+      const res = await fetch(`/api/leads/${leadObj._id || leadObj.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(updateData)
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success) {
+        alert(`Successfully restored "${leadObj.company}" back to "${targetValue}"!`);
+        setNotesModalOpen(false);
+        fetchLeads();
+        fetchNotifications();
+      } else {
+        alert('Restore failed: ' + (data.error || 'Error'));
+      }
+    } catch (err) {
+      alert('Restore error: ' + err.message);
+    }
+  };
+
   // FEATURE: Bulk Multi-Select & Batch Actions Handlers
   const toggleSelectLead = (id) => {
     setSelectedLeadIds(prev =>
@@ -2275,9 +2326,35 @@ export default function Home() {
                               </div>
                             )}
 
-                            <div className="timeline-meta" style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
-                              <i className="fa-regular fa-clock" style={{ marginRight: '4px' }}></i>
-                              {new Date(logItem.timestamp).toLocaleString()} • <i className="fa-regular fa-user" style={{ marginLeft: '4px', marginRight: '2px' }}></i> {logItem.performedBy || 'Sales Team'}
+                            <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                              <div className="timeline-meta" style={{ fontSize: '11px', color: '#64748b' }}>
+                                <i className="fa-regular fa-clock" style={{ marginRight: '4px' }}></i>
+                                {new Date(logItem.timestamp).toLocaleString()} • <i className="fa-regular fa-user" style={{ marginLeft: '4px', marginRight: '2px' }}></i> {logItem.performedBy || 'Sales Team'}
+                              </div>
+
+                              {(logItem.oldValue || logItem.action === 'Follow-up Completed' || logItem.action === 'Follow-up Date Updated') && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRestoreSpecificVersion(activeNotesData.leadObj, logItem)}
+                                  style={{
+                                    background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                                    color: '#ffffff',
+                                    border: 'none',
+                                    padding: '5px 12px',
+                                    borderRadius: '6px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '5px',
+                                    boxShadow: '0 2px 6px rgba(99, 102, 241, 0.3)'
+                                  }}
+                                  title="Click to restore this previous version"
+                                >
+                                  <i className="fa-solid fa-rotate-left"></i> Restore This Version
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
