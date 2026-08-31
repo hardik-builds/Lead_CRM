@@ -240,6 +240,9 @@ export default function Home() {
   const [remindersSaving, setRemindersSaving] = useState(false);
   const [remindersDrawerOpen, setRemindersDrawerOpen] = useState(false);
 
+  // Accidental Click Safety & Undo Toast State
+  const [undoToast, setUndoToast] = useState(null);
+
   // Theme State
   const [darkMode, setDarkMode] = useState(false);
 
@@ -459,11 +462,20 @@ export default function Home() {
     setRescheduleModalOpen(true);
   };
 
-  // FEATURE: Mark Followed Up (Complete) Handler
+  // FEATURE: Mark Followed Up (Complete) Handler with Confirmation & Undo Safety
   const handleMarkFollowedUp = async (lead) => {
+    const companyName = lead.company || 'this lead';
+    if (!confirm(`Mark Follow-up Completed for "${companyName}"?\n\nThis will update status to "Contacted" and clear the pending follow-up date.`)) {
+      return;
+    }
+
     try {
       const todayISO = new Date().toISOString().split('T')[0];
-      const res = await fetch(`/api/leads/${lead._id || lead.id}`, {
+      const prevStatus = lead.status || 'New';
+      const prevFollowUpDate = lead.follow_up_dates || '';
+      const leadId = lead._id || lead.id;
+
+      const res = await fetch(`/api/leads/${leadId}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -474,7 +486,7 @@ export default function Home() {
             {
               timestamp: new Date(),
               action: 'Follow-up Completed',
-              details: `Follow-up completed on ${todayISO}. Pending follow-up date cleared.`,
+              details: `Follow-up completed on ${todayISO}. Previous Status: "${prevStatus}", Previous Date: "${prevFollowUpDate || 'None'}".`,
               performedBy: loggedInUserEmail || 'Sales Team'
             }
           ]
@@ -484,13 +496,62 @@ export default function Home() {
       if (handleAuthError(data)) return;
 
       if (data.success) {
+        setUndoToast({
+          leadId,
+          company: companyName,
+          prevStatus,
+          prevFollowUpDate,
+          timestamp: Date.now()
+        });
         fetchLeads();
         fetchNotifications();
+
+        // Auto dismiss undo banner after 12 seconds
+        setTimeout(() => {
+          setUndoToast(prev => (prev && prev.leadId === leadId ? null : prev));
+        }, 12000);
       } else {
         alert('Failed to mark completed: ' + (data.error || 'Error'));
       }
     } catch (err) {
       alert('Error: ' + err.message);
+    }
+  };
+
+  // FEATURE: Undo / Revert Accidental Follow-up Completion Handler
+  const handleUndoFollowedUp = async (toastObj) => {
+    if (!toastObj) return;
+    try {
+      const currentLead = leads.find(l => (l._id || l.id) === toastObj.leadId);
+      const res = await fetch(`/api/leads/${toastObj.leadId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status: toastObj.prevStatus,
+          follow_up_dates: toastObj.prevFollowUpDate,
+          activity_log: [
+            ...((currentLead && currentLead.activity_log) || []),
+            {
+              timestamp: new Date(),
+              action: 'Follow-up Reverted (Undo)',
+              details: `Accidental completion undone. Restored Status: "${toastObj.prevStatus}", Follow-up Date: "${toastObj.prevFollowUpDate || 'None'}".`,
+              performedBy: loggedInUserEmail || 'Sales Team'
+            }
+          ]
+        })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success) {
+        setUndoToast(null);
+        fetchLeads();
+        fetchNotifications();
+      } else {
+        alert('Failed to revert follow-up: ' + (data.error || 'Error'));
+      }
+    } catch (err) {
+      alert('Revert error: ' + err.message);
     }
   };
   // FEATURE: Bulk Multi-Select & Batch Actions Handlers
@@ -2507,6 +2568,61 @@ export default function Home() {
               onClick={() => setSelectedLeadIds([])}
               style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '18px', cursor: 'pointer', marginLeft: 'auto' }}
               title="Deselect All"
+            >
+              &times;
+            </button>
+          </div>
+        )}
+
+        {/* FEATURE: Accidental Click Safety & Revert Floating Toast Banner */}
+        {undoToast && (
+          <div
+            style={{
+              position: 'fixed',
+              bottom: '24px',
+              right: '24px',
+              zIndex: 9999,
+              background: darkMode ? '#1e293b' : '#0f172a',
+              color: '#ffffff',
+              padding: '14px 20px',
+              borderRadius: '14px',
+              boxShadow: '0 12px 32px rgba(0,0,0,0.35)',
+              border: '1px solid #6366f1',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '14px',
+              animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+            }}
+          >
+            <i className="fa-solid fa-circle-check" style={{ color: '#10b981', fontSize: '18px' }}></i>
+            <div style={{ fontSize: '13px', fontWeight: 600 }}>
+              Marked <strong>{undoToast.company}</strong> as Completed.
+            </div>
+            <button
+              type="button"
+              onClick={() => handleUndoFollowedUp(undoToast)}
+              style={{
+                background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                color: '#ffffff',
+                border: 'none',
+                padding: '7px 14px',
+                borderRadius: '8px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 3px 10px rgba(99, 102, 241, 0.4)'
+              }}
+            >
+              <i className="fa-solid fa-rotate-left"></i> Undo / Revert
+            </button>
+            <button
+              type="button"
+              onClick={() => setUndoToast(null)}
+              style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '16px', marginLeft: '4px' }}
+              title="Dismiss banner"
             >
               &times;
             </button>
