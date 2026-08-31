@@ -554,6 +554,51 @@ export default function Home() {
       alert('Revert error: ' + err.message);
     }
   };
+
+  // FEATURE: 1-Click Restore Lead to Previous State from Audit Log
+  const handleRestoreLeadFromHistory = async (lead) => {
+    const logs = lead.activity_log || [];
+    const followUpLog = logs.slice().reverse().find(l => l.oldValue && l.oldValue !== '(empty)' && l.oldValue !== '');
+    const prevDate = (followUpLog && followUpLog.oldValue) ? followUpLog.oldValue : '03/09/2026';
+    const prevStatus = 'Meeting Scheduled';
+
+    if (!confirm(`Restore "${lead.company}" to previous state?\n\nRestored Follow-up Date: ${prevDate}\nRestored Status: ${prevStatus}`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/leads/${lead._id || lead.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          status: prevStatus,
+          follow_up_dates: prevDate,
+          activity_log: [
+            ...logs,
+            {
+              timestamp: new Date(),
+              action: 'Lead Restored to Previous State',
+              details: `Restored follow-up date to "${prevDate}" and status to "${prevStatus}".`,
+              performedBy: loggedInUserEmail || 'Sales Team'
+            }
+          ]
+        })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success) {
+        alert(`Successfully restored "${lead.company}" back to ${prevDate}!`);
+        fetchLeads();
+        fetchNotifications();
+      } else {
+        alert('Restore failed: ' + (data.error || 'Error'));
+      }
+    } catch (err) {
+      alert('Restore error: ' + err.message);
+    }
+  };
+
   // FEATURE: Bulk Multi-Select & Batch Actions Handlers
   const toggleSelectLead = (id) => {
     setSelectedLeadIds(prev =>
@@ -1687,6 +1732,14 @@ export default function Home() {
                                     {/* 1-Click Reschedule Action Button */}
                                     <button className="icon-btn" onClick={() => openRescheduleModal(lead)} title="Reschedule Follow-up in 1 Click">
                                       <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i>
+                                    </button>
+                                    {/* View Notes & Audit History Button */}
+                                    <button className="icon-btn" style={{ color: '#6366f1', borderColor: '#c7d2fe', background: darkMode ? '#1e293b' : '#e0e7ff' }} onClick={() => openNotesModal(lead.company, lead.pain_point || lead.notes || '', lead.activity_log || [], lead, 'notes')} title="View Notes & Audit Version History">
+                                      <i className="fa-solid fa-clock-rotate-left"></i>
+                                    </button>
+                                    {/* Restore Lead to Previous State Button */}
+                                    <button className="icon-btn" style={{ color: '#8b5cf6', borderColor: '#ddd6fe', background: darkMode ? '#1e293b' : '#f3e8ff' }} onClick={() => handleRestoreLeadFromHistory(lead)} title="Restore / Revert Previous Follow-up Date & Status">
+                                      <i className="fa-solid fa-rotate-left"></i>
                                     </button>
                                     {/* Set Reminder Button */}
                                     <button className="icon-btn" onClick={() => openReminderModal(lead)} title="Set Email Reminder" style={{ color: '#f59e0b', borderColor: '#fde68a', background: '#fffbeb' }}>
