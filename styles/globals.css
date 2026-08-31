@@ -1465,7 +1465,9 @@ body.dark-mode .sidebar-section-header {
 
 .action-btns {
   display: flex;
+  align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .icon-btn {

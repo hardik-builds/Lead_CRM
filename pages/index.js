@@ -1730,7 +1730,7 @@ export default function Home() {
                               )}
                             </div>
 
-                            <div style={{ display: 'flex', gap: '8px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', alignItems: 'center' }}>
                               <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center', color: '#10b981', borderColor: '#a7f3d0' }} onClick={() => handleMarkFollowedUp(lead)}>
                                 <i className="fa-solid fa-circle-check"></i> Done
                               </button>
