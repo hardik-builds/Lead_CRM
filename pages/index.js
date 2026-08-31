@@ -212,7 +212,10 @@ export default function Home() {
 
   // Read Notes Full Popup Modal State
   const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [activeNotesData, setActiveNotesData] = useState({ company: '', text: '', activityLog: [] });
+  const [activeNotesData, setActiveNotesData] = useState({ company: '', text: '', activityLog: [], leadObj: null });
+  const [modalActiveTab, setModalActiveTab] = useState('notes');
+  const [appendNoteText, setAppendNoteText] = useState('');
+  const [isAppendingNote, setIsAppendingNote] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -813,9 +816,48 @@ export default function Home() {
   };
 
   // FEATURE 3: Open Full Notes & Activity Log Timeline Modal
-  const openNotesModal = (company, text, activityLog = []) => {
-    setActiveNotesData({ company, text, activityLog });
+  const openNotesModal = (company, text, activityLog = [], leadObj = null, defaultTab = 'notes') => {
+    setActiveNotesData({ company, text, activityLog, leadObj });
+    setModalActiveTab(defaultTab);
+    setAppendNoteText('');
     setNotesModalOpen(true);
+  };
+
+  // Append / Add New Note directly inside Modal
+  const handleAppendNote = async (e) => {
+    e.preventDefault();
+    if (!appendNoteText.trim() || !activeNotesData.leadObj) return;
+
+    setIsAppendingNote(true);
+    try {
+      const leadId = activeNotesData.leadObj._id || activeNotesData.leadObj.id;
+      const currentNotes = activeNotesData.leadObj.notes || '';
+      const formattedDate = new Date().toLocaleDateString('en-GB');
+      const updatedNotes = currentNotes ? `${currentNotes}\n[${formattedDate}]: ${appendNoteText.trim()}` : appendNoteText.trim();
+
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ notes: updatedNotes })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success && data.lead) {
+        setActiveNotesData({
+          company: data.lead.company,
+          text: data.lead.notes,
+          activityLog: data.lead.activity_log || [],
+          leadObj: data.lead
+        });
+        setAppendNoteText('');
+        fetchLeads();
+      }
+    } catch (err) {
+      alert('Error updating note: ' + err.message);
+    } finally {
+      setIsAppendingNote(false);
+    }
   };
 
   // Save Lead Handler
@@ -1484,12 +1526,12 @@ export default function Home() {
                                   {notesText ? (
                                     <div className="notes-preview-badge">
                                       <span className="notes-text-truncated">{notesText}</span>
-                                      <button className="read-notes-btn" onClick={() => openNotesModal(lead.company, notesText, lead.activity_log || [])}>
+                                      <button className="read-notes-btn" onClick={() => openNotesModal(lead.company, notesText, lead.activity_log || [], lead, 'notes')}>
                                         <i className="fa-solid fa-eye"></i> View Notes & History
                                       </button>
                                     </div>
                                   ) : (
-                                    <button className="read-notes-btn" onClick={() => openNotesModal(lead.company, 'No notes recorded yet.', lead.activity_log || [])}>
+                                    <button className="read-notes-btn" onClick={() => openNotesModal(lead.company, 'No notes recorded yet.', lead.activity_log || [], lead, 'history')}>
                                       <i className="fa-solid fa-clock-rotate-left"></i> View History
                                     </button>
                                   )}
@@ -1672,6 +1714,9 @@ export default function Home() {
                               </button>
                               <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openRescheduleModal(lead)}>
                                 <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i> Reschedule
+                              </button>
+                              <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#6366f1', borderColor: '#c7d2fe' }} onClick={() => openNotesModal(lead.company, notesText, lead.activity_log || [], lead, 'notes')} title="View Notes & History">
+                                <i className="fa-solid fa-clock-rotate-left"></i>
                               </button>
                               <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#f59e0b', borderColor: '#fde68a', background: darkMode ? '#1c2436' : '#fffbeb' }} onClick={() => openReminderModal(lead)} title="Set Email Reminder">
                                 <i className="fa-solid fa-bell"></i>
@@ -1902,59 +1947,211 @@ export default function Home() {
           </div>
         )}
 
-        {/* FEATURE 3: MODAL - Notes & Activity Log History Timeline */}
+        {/* FEATURE 3: MODAL - Two-Tab Notes & Audit Version History Timeline */}
         {notesModalOpen && (
           <div className="modal-overlay">
-            <div className="modal-card" style={{ maxWidth: '560px' }}>
-              <div className="modal-header">
-                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <i className="fa-solid fa-note-sticky" style={{ color: '#4f46e5' }}></i>
-                  Notes & History Timeline for {activeNotesData.company}
+            <div className="modal-card" style={{ maxWidth: '640px', width: '92vw' }}>
+              <div className="modal-header" style={{ marginBottom: '12px' }}>
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <i className="fa-solid fa-note-sticky" style={{ color: '#6366f1' }}></i>
+                  Notes & Version History: <span style={{ color: '#6366f1' }}>{activeNotesData.company}</span>
                 </h3>
                 <button className="close-modal-btn" onClick={() => setNotesModalOpen(false)}>&times;</button>
               </div>
 
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>Current Notes / Pain Point:</label>
-              <div style={{
-                background: '#f8fafc',
-                border: '1px solid #e2e8f0',
-                borderRadius: '12px',
-                padding: '16px',
-                fontSize: '13px',
-                color: '#1e293b',
-                lineHeight: 1.6,
-                whiteSpace: 'pre-wrap',
-                marginTop: '6px',
-                marginBottom: '20px'
-              }}>
-                {activeNotesData.text || 'No notes recorded yet.'}
+              {/* Modal Tabs Header */}
+              <div className="modal-tab-bar" style={{ display: 'flex', gap: '10px', borderBottom: '1px solid var(--border-color)', marginBottom: '16px', paddingBottom: '8px' }}>
+                <button
+                  type="button"
+                  className={`btn ${modalActiveTab === 'notes' ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setModalActiveTab('notes')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '8px 14px', borderRadius: '10px', fontWeight: 700 }}
+                >
+                  <i className="fa-solid fa-file-pen"></i>
+                  <span>Notes & Note Revisions</span>
+                  <span className="badge" style={{ background: modalActiveTab === 'notes' ? 'rgba(255,255,255,0.25)' : 'var(--bg-secondary)', color: 'inherit' }}>
+                    {((activeNotesData.activityLog || []).filter(l => l.action === 'Notes Updated' || l.field === 'notes')).length + (activeNotesData.text ? 1 : 0)}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`btn ${modalActiveTab === 'history' ? 'btn-primary' : 'btn-outline'}`}
+                  onClick={() => setModalActiveTab('history')}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', padding: '8px 14px', borderRadius: '10px', fontWeight: 700 }}
+                >
+                  <i className="fa-solid fa-clock-rotate-left"></i>
+                  <span>Audit & Version History</span>
+                  <span className="badge" style={{ background: modalActiveTab === 'history' ? 'rgba(255,255,255,0.25)' : 'var(--bg-secondary)', color: 'inherit' }}>
+                    {(activeNotesData.activityLog || []).length}
+                  </span>
+                </button>
               </div>
 
-              <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a' }}>
-                <i className="fa-solid fa-clock-rotate-left" style={{ color: '#4f46e5', marginRight: '6px' }}></i>
-                Lead Activity Log & Timeline:
-              </label>
-
-              <div style={{ maxHeight: '220px', overflowY: 'auto', paddingRight: '10px' }}>
-                {(!activeNotesData.activityLog || activeNotesData.activityLog.length === 0) ? (
-                  <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px' }}>No history entries logged yet.</p>
-                ) : (
-                  <div className="timeline-container">
-                    {activeNotesData.activityLog.map((logItem, i) => (
-                      <div key={i} className="timeline-item">
-                        <div className="timeline-dot"></div>
-                        <div className="timeline-action">{logItem.action}</div>
-                        <div className="timeline-details">{logItem.details}</div>
-                        <div className="timeline-meta">
-                          {new Date(logItem.timestamp).toLocaleString()} • {logItem.performedBy || 'Sales Team'}
-                        </div>
-                      </div>
-                    ))}
+              {/* TAB 1: Notes & Notes Revision History */}
+              {modalActiveTab === 'notes' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* Current Active Note */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-color)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <i className="fa-solid fa-thumbtack" style={{ color: '#10b981' }}></i>
+                        Current Active Note:
+                      </label>
+                      {activeNotesData.text && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => {
+                            navigator.clipboard.writeText(activeNotesData.text);
+                            alert('Note copied to clipboard!');
+                          }}
+                          style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 700 }}
+                        >
+                          <i className="fa-solid fa-copy"></i> Copy Note
+                        </button>
+                      )}
+                    </div>
+                    <div style={{
+                      background: 'var(--bg-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '12px',
+                      padding: '14px',
+                      fontSize: '13px',
+                      color: 'var(--text-color)',
+                      lineHeight: 1.6,
+                      whiteSpace: 'pre-wrap',
+                      maxHeight: '140px',
+                      overflowY: 'auto'
+                    }}>
+                      {activeNotesData.text || <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>No active notes recorded yet. Use the input below to add notes.</span>}
+                    </div>
                   </div>
-                )}
-              </div>
 
-              <div className="modal-footer">
+                  {/* Add / Append Note Form */}
+                  {activeNotesData.leadObj && (
+                    <form onSubmit={handleAppendNote} style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(99, 102, 241, 0.05)', border: '1px solid rgba(99, 102, 241, 0.2)', padding: '12px', borderRadius: '12px' }}>
+                      <label style={{ fontSize: '11px', fontWeight: 700, color: '#6366f1', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <i className="fa-solid fa-plus-circle"></i> Add / Append New Note Entry:
+                      </label>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <input
+                          type="text"
+                          value={appendNoteText}
+                          onChange={(e) => setAppendNoteText(e.target.value)}
+                          placeholder="Type a new note update here..."
+                          style={{ flex: 1, padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', fontSize: '12px', outline: 'none', background: 'var(--bg-primary)', color: 'inherit' }}
+                        />
+                        <button
+                          type="submit"
+                          className="btn btn-primary"
+                          disabled={isAppendingNote || !appendNoteText.trim()}
+                          style={{ fontSize: '12px', fontWeight: 700, padding: '8px 14px', whiteSpace: 'nowrap' }}
+                        >
+                          {isAppendingNote ? 'Saving...' : 'Add Note'}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Notes Revision History Log */}
+                  <div>
+                    <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-color)', marginBottom: '8px', display: 'block' }}>
+                      <i className="fa-solid fa-clock-rotate-left" style={{ color: '#6366f1', marginRight: '6px' }}></i>
+                      Notes Revision & Version History:
+                    </label>
+
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', paddingRight: '6px' }}>
+                      {(() => {
+                        const noteLogs = (activeNotesData.activityLog || []).filter(l => l.action === 'Notes Updated' || l.field === 'notes');
+                        if (noteLogs.length === 0) {
+                          return <p style={{ fontSize: '12px', color: '#94a3b8', margin: '8px 0' }}>No previous note revisions recorded yet.</p>;
+                        }
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {noteLogs.map((logItem, idx) => (
+                              <div key={idx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '10px', padding: '10px 12px', fontSize: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', color: '#64748b', fontSize: '11px', fontWeight: 600 }}>
+                                  <span><i className="fa-solid fa-user-pen" style={{ marginRight: '4px' }}></i> {logItem.performedBy || 'Sales Team'}</span>
+                                  <span>{new Date(logItem.timestamp).toLocaleString()}</span>
+                                </div>
+
+                                {logItem.oldValue && logItem.newValue ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '6px 10px', borderRadius: '6px', color: '#dc2626' }}>
+                                      <strong style={{ fontSize: '10px', textTransform: 'uppercase', display: 'block' }}>Previous Note Version:</strong>
+                                      <span style={{ whiteSpace: 'pre-wrap' }}>{logItem.oldValue}</span>
+                                    </div>
+                                    <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '6px 10px', borderRadius: '6px', color: '#059669' }}>
+                                      <strong style={{ fontSize: '10px', textTransform: 'uppercase', display: 'block' }}>Updated Note Version:</strong>
+                                      <span style={{ whiteSpace: 'pre-wrap' }}>{logItem.newValue}</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div style={{ whiteSpace: 'pre-wrap', color: 'var(--text-color)' }}>
+                                    {logItem.details}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: Full Context Audit & Version History */}
+              {modalActiveTab === 'history' && (
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-color)', marginBottom: '8px', display: 'block' }}>
+                    <i className="fa-solid fa-timeline" style={{ color: '#6366f1', marginRight: '6px' }}></i>
+                    Complete Audit Trail & Field Change History:
+                  </label>
+
+                  <div style={{ maxHeight: '340px', overflowY: 'auto', paddingRight: '6px' }}>
+                    {(!activeNotesData.activityLog || activeNotesData.activityLog.length === 0) ? (
+                      <p style={{ fontSize: '12px', color: '#94a3b8', margin: '12px 0' }}>No version history entries logged yet.</p>
+                    ) : (
+                      <div className="timeline-container">
+                        {activeNotesData.activityLog.map((logItem, i) => (
+                          <div key={i} className="timeline-item" style={{ marginBottom: '16px' }}>
+                            <div className="timeline-dot" style={{ background: '#6366f1' }}></div>
+                            <div className="timeline-action" style={{ fontWeight: 800, fontSize: '13px' }}>
+                              {logItem.action}
+                            </div>
+
+                            {/* Full Context Diff Display */}
+                            {logItem.oldValue && logItem.newValue ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', margin: '6px 0', fontSize: '12px' }}>
+                                <span style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#dc2626', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'pre-wrap', maxWidth: '100%' }}>
+                                  Previous: {logItem.oldValue}
+                                </span>
+                                <i className="fa-solid fa-arrow-right" style={{ color: '#94a3b8', fontSize: '11px' }}></i>
+                                <span style={{ background: 'rgba(16, 185, 129, 0.12)', border: '1px solid rgba(16, 185, 129, 0.25)', color: '#059669', padding: '4px 10px', borderRadius: '6px', fontWeight: 700, whiteSpace: 'pre-wrap', maxWidth: '100%' }}>
+                                  New: {logItem.newValue}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="timeline-details" style={{ fontSize: '12px', marginTop: '2px' }}>
+                                {logItem.details}
+                              </div>
+                            )}
+
+                            <div className="timeline-meta" style={{ marginTop: '4px', fontSize: '11px', color: '#64748b' }}>
+                              <i className="fa-regular fa-clock" style={{ marginRight: '4px' }}></i>
+                              {new Date(logItem.timestamp).toLocaleString()} • <i className="fa-regular fa-user" style={{ marginLeft: '4px', marginRight: '2px' }}></i> {logItem.performedBy || 'Sales Team'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="modal-footer" style={{ marginTop: '16px' }}>
                 <button type="button" className="btn btn-primary" onClick={() => setNotesModalOpen(false)}>Close</button>
               </div>
             </div>

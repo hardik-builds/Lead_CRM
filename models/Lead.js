@@ -4,7 +4,10 @@ const ActivityLogSchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now },
   action: { type: String, required: true },
   details: { type: String, default: '' },
-  performedBy: { type: String, default: 'Sales Team' }
+  performedBy: { type: String, default: 'Sales Team' },
+  field: { type: String, default: '' },
+  oldValue: { type: String, default: '' },
+  newValue: { type: String, default: '' }
 });
 
 const LeadSchema = new mongoose.Schema({

@@ -34,7 +34,7 @@ export default async function handler(req, res) {
         updateData.date_added = normalizeToIndianDate(updateData.date_added) || updateData.date_added;
       }
 
-      // Build activity log entry if follow-up date, status, or notes changed
+      // Build activity log entry with FULL CONTEXT diffs
       const newActivity = [];
 
       // Extract any new activity item passed from frontend (e.g. Follow-up Completed)
@@ -48,32 +48,58 @@ export default async function handler(req, res) {
         });
       }
 
-      if (updateData.follow_up_dates && updateData.follow_up_dates !== existing.follow_up_dates) {
-        newActivity.push({
-          timestamp: new Date(),
-          action: 'Follow-up Rescheduled',
-          details: `Rescheduled from '${existing.follow_up_dates || 'None'}' to '${updateData.follow_up_dates}'`,
-          performedBy: updateData.assigned_to || 'Sales Team'
-        });
-      }
+      // Comprehensive Field-by-Field Diff Comparison
+      const fieldsToTrack = [
+        { key: 'status', label: 'Status' },
+        { key: 'new_status', label: 'New Status' },
+        { key: 'follow_up_dates', label: 'Follow-up Date' },
+        { key: 'reachout_date', label: 'Reachout Date' },
+        { key: 'notes', label: 'Notes' },
+        { key: 'company', label: 'Company Name' },
+        { key: 'contact', label: 'Contact Phone' },
+        { key: 'email', label: 'Email Address' },
+        { key: 'founder', label: 'Founder Name' },
+        { key: 'city', label: 'City' },
+        { key: 'locations', label: 'Locations' },
+        { key: 'score_of_client', label: 'Client Score' },
+        { key: 'next_action', label: 'Next Action' },
+        { key: 'pain_point', label: 'Pain Point' },
+        { key: 'assigned_to', label: 'Assigned Agent' },
+        { key: 'source', label: 'Source' }
+      ];
 
-      if (updateData.status && updateData.status !== existing.status) {
-        newActivity.push({
-          timestamp: new Date(),
-          action: 'Status Updated',
-          details: `Status changed from '${existing.status}' to '${updateData.status}'`,
-          performedBy: updateData.assigned_to || 'Sales Team'
-        });
-      }
+      fieldsToTrack.forEach(({ key, label }) => {
+        if (updateData[key] !== undefined) {
+          const oldVal = existing[key] !== undefined && existing[key] !== null ? String(existing[key]).trim() : '';
+          const newVal = String(updateData[key]).trim();
 
-      if (updateData.notes && updateData.notes !== existing.notes) {
-        newActivity.push({
-          timestamp: new Date(),
-          action: 'Notes Updated',
-          details: `Updated notes: "${updateData.notes.slice(0, 60)}..."`,
-          performedBy: updateData.assigned_to || 'Sales Team'
-        });
-      }
+          if (oldVal !== newVal) {
+            const author = updateData.assigned_to || existing.assigned_to || 'Sales Team';
+
+            if (key === 'notes') {
+              newActivity.push({
+                timestamp: new Date(),
+                action: 'Notes Updated',
+                field: 'notes',
+                details: oldVal ? `Updated notes from "${oldVal}" to "${newVal}"` : `Initial note added: "${newVal}"`,
+                oldValue: oldVal || '(empty)',
+                newValue: newVal || '(empty)',
+                performedBy: author
+              });
+            } else {
+              newActivity.push({
+                timestamp: new Date(),
+                action: `${label} Updated`,
+                field: key,
+                details: oldVal ? `Changed ${label} from '${oldVal}' to '${newVal}'` : `Set ${label} to '${newVal}'`,
+                oldValue: oldVal || '(empty)',
+                newValue: newVal || '(empty)',
+                performedBy: author
+              });
+            }
+          }
+        }
+      });
 
       const updateQuery = { $set: updateData };
       if (newActivity.length > 0) {
