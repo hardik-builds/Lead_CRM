@@ -721,7 +721,7 @@ export default function Home() {
         const data = await res.json();
         if (handleAuthError(data)) return;
         if (data.success) {
-          alert(newNum.trim() ? `Successfully updated new number for "${lead.company}"!` : `Cleared flag for "${lead.company}".`);
+          alert(newNum.trim() ? `Successfully updated new number for "${lead.company}"! Moved to "New Number Found" section.` : `Cleared flag for "${lead.company}".`);
           fetchLeads();
           fetchNotifications();
         } else {
@@ -730,6 +730,43 @@ export default function Home() {
       } catch (err) {
         alert('Error: ' + err.message);
       }
+    }
+  };
+
+  // FEATURE: Resume standard pipeline from "New Number Found"
+  const handleResumePipeline = async (lead) => {
+    const leadId = lead._id || lead.id;
+    if (!confirm(`Move "${lead.company}" back to standard Active Pipeline?`)) return;
+
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          needs_new_number: false,
+          number_status: 'valid',
+          activity_log: [
+            ...(lead.activity_log || []),
+            {
+              timestamp: new Date(),
+              action: 'Resumed to Active Pipeline',
+              details: 'Phone number verified/updated. Lead moved back to standard pipeline.',
+              performedBy: loggedInUserEmail || 'Sales Team'
+            }
+          ]
+        })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+      if (data.success) {
+        alert(`"${lead.company}" moved back to standard active pipeline!`);
+        fetchLeads();
+        fetchNotifications();
+      } else {
+        alert('Failed: ' + (data.error || 'Error'));
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
     }
   };
 
@@ -1370,6 +1407,12 @@ export default function Home() {
                   <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#dc2626' }}>{kpis.needsNewNumberCount || 0}</span>
                 </button>
 
+                <button className={`nav-item ${currentTab === 'new_number_found' ? 'active' : ''}`} onClick={() => { setCurrentTab('new_number_found'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-circle-check" style={{ color: '#10b981' }}></i>
+                  <span>New Number Found</span>
+                  <span className="badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#059669' }}>{kpis.newNumberFoundCount || 0}</span>
+                </button>
+
                 <button className="nav-item" onClick={() => { setRemindersDrawerOpen(true); setMobileMenuOpen(false); }}>
                   <i className="fa-solid fa-bell" style={{ color: '#f59e0b' }}></i>
                   <span>My Reminders ({(reminders || []).filter(r => r && r.status === 'pending').length})</span>
@@ -1571,6 +1614,10 @@ export default function Home() {
                 <i className="fa-solid fa-phone-slash"></i> Needs New Number ({kpis.needsNewNumberCount || 0})
               </button>
 
+              <button className={`pill-today ${currentTab === 'new_number_found' ? 'active' : ''}`} onClick={() => setCurrentTab('new_number_found')} style={{ cursor: 'pointer', border: 'none', background: 'rgba(16, 185, 129, 0.15)', color: '#059669' }}>
+                <i className="fa-solid fa-circle-check"></i> New Number Found ({kpis.newNumberFoundCount || 0})
+              </button>
+
               {filterDate && (
                 <span className="pill-upcoming">
                   <i className="fa-solid fa-calendar"></i> Filtered: {filterDate}
@@ -1620,6 +1667,20 @@ export default function Home() {
                 <span className="kpi-title">Needs New Number</span>
                 <h3 style={{ color: '#d97706' }}>{kpis.needsNewNumberCount || 0}</h3>
                 <span className="kpi-sub">Number Not Connecting</span>
+              </div>
+            </div>
+
+            <div 
+              className={`kpi-card glass ${currentTab === 'new_number_found' ? 'active-kpi' : ''}`} 
+              onClick={() => setCurrentTab('new_number_found')} 
+              style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+              title="Click to view Leads with Newly Found Phone Numbers"
+            >
+              <div className="kpi-icon" style={{ background: '#d1fae5', color: '#059669' }}><i className="fa-solid fa-circle-check"></i></div>
+              <div className="kpi-data">
+                <span className="kpi-title">New Number Found</span>
+                <h3 style={{ color: '#059669' }}>{kpis.newNumberFoundCount || 0}</h3>
+                <span className="kpi-sub">Ready to Resume Outreach</span>
               </div>
             </div>
 
@@ -1684,6 +1745,8 @@ export default function Home() {
                     {currentTab === 'overdue' && 'Overdue Follow-ups'}
                     {currentTab === 'followups' && 'All Scheduled Follow-ups'}
                     {currentTab === 'reachout' && 'Outreach Pipeline'}
+                    {currentTab === 'needs_new_number' && 'Leads Requiring New Phone Numbers'}
+                    {currentTab === 'new_number_found' && 'Enriched Leads - New Phone Number Found'}
                     {filterDate && ` (Date: ${filterDate})`}
                   </h2>
                 </div>
@@ -1812,6 +1875,11 @@ export default function Home() {
                                        <span style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#dc2626', fontSize: '10px', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
                                          <i className="fa-solid fa-phone-slash"></i> Needs New Number
                                        </span>
+                                    )}
+                                    {(lead.number_status === 'found' || lead.number_status === 'new_number_found') && (
+                                       <span style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#059669', fontSize: '10px', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                         <i className="fa-solid fa-circle-check"></i> New Number Found
+                                       </span>
                                      )}
                                      {lead.alternate_contact && (
                                        <span style={{ color: '#0284c7', fontSize: '11px', fontWeight: 700, display: 'block', marginTop: '2px' }}>
@@ -1916,6 +1984,12 @@ export default function Home() {
                                     >
                                       <i className="fa-solid fa-phone-slash"></i>
                                     </button>
+                                    {/* Move Back to Active Pipeline (Resume Follow-ups) */}
+                                    {(lead.number_status === 'found' || lead.number_status === 'new_number_found') && (
+                                      <button className="icon-btn" style={{ color: '#059669', borderColor: '#6ee7b7', background: '#ecfdf5' }} onClick={() => handleResumePipeline(lead)} title="Move Lead Back to Standard Active Follow-up Pipeline">
+                                        <i className="fa-solid fa-play"></i>
+                                      </button>
+                                    )}
                                     {/* View Notes & Audit History Button */}
                                     <button className="icon-btn" style={{ color: '#6366f1', borderColor: '#c7d2fe', background: darkMode ? '#1e293b' : '#e0e7ff' }} onClick={() => openNotesModal(lead.company, lead.pain_point || lead.notes || '', lead.activity_log || [], lead, 'notes')} title="View Notes & Audit Version History">
                                       <i className="fa-solid fa-clock-rotate-left"></i>
@@ -1991,6 +2065,13 @@ export default function Home() {
                                       </span>
                                     </div>
                                   )}
+                                  {(lead.number_status === 'found' || lead.number_status === 'new_number_found') && (
+                                    <div style={{ marginTop: '2px' }}>
+                                      <span style={{ background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#059669', fontSize: '10px', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <i className="fa-solid fa-circle-check"></i> New Number Found
+                                      </span>
+                                    </div>
+                                  )}
                                   {lead.alternate_contact && (
                                     <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>
                                       <i className="fa-solid fa-phone-volume"></i> Alt: {lead.alternate_contact}
@@ -2048,6 +2129,11 @@ export default function Home() {
                               <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openRescheduleModal(lead)}>
                                 <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i> Reschedule
                               </button>
+                              {(lead.number_status === 'found' || lead.number_status === 'new_number_found') && (
+                                <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#059669', borderColor: '#6ee7b7', background: '#ecfdf5' }} onClick={() => handleResumePipeline(lead)} title="Move Lead Back to Active Pipeline">
+                                  <i className="fa-solid fa-play"></i> Resume
+                                </button>
+                              )}
                               <button
                                 className="btn btn-outline"
                                 style={{

@@ -156,44 +156,52 @@ export default async function handler(req, res) {
         return 'followups';
       };
 
+      const isNeedsNewNumber = (l) => l.needs_new_number === true || l.number_status === 'needs_number';
+      const isNewNumberFound = (l) => l.number_status === 'found' || l.number_status === 'new_number_found';
+
       let filtered = allLeads;
-      if (tab === 'new') {
-        filtered = allLeads.filter(l => getCategory(l) === 'new');
+      if (tab === 'needs_new_number') {
+        filtered = allLeads.filter(l => isNeedsNewNumber(l));
+      } else if (tab === 'new_number_found') {
+        filtered = allLeads.filter(l => isNewNumberFound(l));
+      } else if (tab === 'new') {
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'new');
       } else if (tab === 'contacted' || tab === 'followups') {
-        filtered = allLeads.filter(l => getCategory(l) === 'followups');
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'followups');
       } else if (tab === 'meetings') {
-        filtered = allLeads.filter(l => getCategory(l) === 'meetings');
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'meetings');
       } else if (tab === 'qualified') {
-        filtered = allLeads.filter(l => getCategory(l) === 'qualified');
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'qualified');
       } else if (tab === 'nurture') {
-        filtered = allLeads.filter(l => getCategory(l) === 'nurture');
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'nurture');
       } else if (tab === 'not_interested') {
-        filtered = allLeads.filter(l => getCategory(l) === 'not_interested');
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'not_interested');
       } else if (tab === 'won') {
-        filtered = allLeads.filter(l => getCategory(l) === 'won');
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'won');
       } else if (tab === 'lost') {
-        filtered = allLeads.filter(l => getCategory(l) === 'lost');
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'lost');
       } else if (tab === 'today') {
         filtered = allLeads.filter(l => {
+          if (isNeedsNewNumber(l) || isNewNumberFound(l)) return false;
           const fuISO = normalizeToISO(l.follow_up_dates);
           return fuISO === todayStr;
         });
       } else if (tab === 'overdue') {
         filtered = allLeads.filter(l => {
+          if (isNeedsNewNumber(l) || isNewNumberFound(l)) return false;
           const fuISO = normalizeToISO(l.follow_up_dates);
           const cat = getCategory(l);
           if (cat === 'won' || cat === 'lost' || cat === 'not_interested') return false;
           return fuISO && fuISO < todayStr;
         });
       } else if (tab === 'reachout') {
-        filtered = allLeads.filter(l => l.reachout_date && l.reachout_date.trim() !== '');
-      } else if (tab === 'needs_new_number') {
-        filtered = allLeads.filter(l => l.needs_new_number === true || l.number_status === 'needs_number' || (l.notes && (l.notes.toLowerCase().includes('wrong number') || l.notes.toLowerCase().includes('not working') || l.notes.toLowerCase().includes('switched off') || l.notes.toLowerCase().includes('find number'))));
+        filtered = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && l.reachout_date && l.reachout_date.trim() !== '');
       }
 
       let todayCount = 0;
       let overdueCount = 0;
       allLeads.forEach(l => {
+        if (isNeedsNewNumber(l) || isNewNumberFound(l)) return;
         const fuISO = normalizeToISO(l.follow_up_dates);
         const cat = getCategory(l);
         if (fuISO) {
@@ -206,14 +214,15 @@ export default async function handler(req, res) {
       });
 
       const totalCount = allLeads.length;
-      const notInterestedCount = allLeads.filter(l => getCategory(l) === 'not_interested').length;
-      const nurtureCount = allLeads.filter(l => getCategory(l) === 'nurture').length;
-      const qualifiedCount = allLeads.filter(l => getCategory(l) === 'qualified').length;
-      const meetingsCount = allLeads.filter(l => getCategory(l) === 'meetings').length;
-      const newLeadsCount = allLeads.filter(l => getCategory(l) === 'new').length;
-      const followupsCount = allLeads.filter(l => getCategory(l) === 'followups').length;
+      const notInterestedCount = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'not_interested').length;
+      const nurtureCount = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'nurture').length;
+      const qualifiedCount = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'qualified').length;
+      const meetingsCount = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'meetings').length;
+      const newLeadsCount = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'new').length;
+      const followupsCount = allLeads.filter(l => !isNeedsNewNumber(l) && !isNewNumberFound(l) && getCategory(l) === 'followups').length;
       const contactedCount = followupsCount;
-      const needsNewNumberCount = allLeads.filter(l => l.needs_new_number === true || l.number_status === 'needs_number' || (l.notes && (l.notes.toLowerCase().includes('wrong number') || l.notes.toLowerCase().includes('not working') || l.notes.toLowerCase().includes('switched off') || l.notes.toLowerCase().includes('find number')))).length;
+      const needsNewNumberCount = allLeads.filter(l => isNeedsNewNumber(l)).length;
+      const newNumberFoundCount = allLeads.filter(l => isNewNumberFound(l)).length;
 
       const responsePayload = {
         success: true,
@@ -231,7 +240,8 @@ export default async function handler(req, res) {
           newLeadsCount,
           todayCount,
           overdueCount,
-          needsNewNumberCount
+          needsNewNumberCount,
+          newNumberFoundCount
         }
       };
 
