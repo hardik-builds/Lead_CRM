@@ -650,6 +650,89 @@ export default function Home() {
     }
   };
 
+  // FEATURE: Toggle "Needs New Number" Flag / Update Phone Number Handler
+  const handleToggleNeedsNewNumber = async (lead) => {
+    const isCurrentlyFlagged = lead.needs_new_number || lead.number_status === 'needs_number';
+    const leadId = lead._id || lead.id;
+
+    if (!isCurrentlyFlagged) {
+      if (!confirm(`Flag "${lead.company}" as "Needs New Number"?\n\nOld phone number (${lead.contact || 'N/A'}) is not connecting / invalid.`)) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/leads/${leadId}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            needs_new_number: true,
+            number_status: 'needs_number',
+            activity_log: [
+              ...(lead.activity_log || []),
+              {
+                timestamp: new Date(),
+                action: 'Flagged: Needs New Number',
+                details: `Old number '${lead.contact || 'N/A'}' not connecting. Flagged to find new phone number.`,
+                performedBy: loggedInUserEmail || 'Sales Team'
+              }
+            ]
+          })
+        });
+        const data = await res.json();
+        if (handleAuthError(data)) return;
+        if (data.success) {
+          fetchLeads();
+          fetchNotifications();
+        } else {
+          alert('Failed to flag lead: ' + (data.error || 'Error'));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    } else {
+      const newNum = prompt(`New number found for "${lead.company}"?\n\nEnter new phone number to update contact (or leave blank to just clear flag):`, lead.alternate_contact || '');
+      if (newNum === null) return;
+
+      const updatedFields = {
+        needs_new_number: false,
+        number_status: newNum.trim() ? 'found' : 'valid'
+      };
+      if (newNum.trim()) {
+        updatedFields.contact = `${lead.contact ? lead.contact + ' / ' : ''}${newNum.trim()}`;
+        updatedFields.alternate_contact = newNum.trim();
+      }
+
+      try {
+        const res = await fetch(`/api/leads/${leadId}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            ...updatedFields,
+            activity_log: [
+              ...(lead.activity_log || []),
+              {
+                timestamp: new Date(),
+                action: newNum.trim() ? 'New Phone Number Updated' : 'Needs New Number Flag Cleared',
+                details: newNum.trim() ? `Updated contact with new phone number: '${newNum.trim()}'.` : 'Cleared "Needs New Number" flag.',
+                performedBy: loggedInUserEmail || 'Sales Team'
+              }
+            ]
+          })
+        });
+        const data = await res.json();
+        if (handleAuthError(data)) return;
+        if (data.success) {
+          alert(newNum.trim() ? `Successfully updated new number for "${lead.company}"!` : `Cleared flag for "${lead.company}".`);
+          fetchLeads();
+          fetchNotifications();
+        } else {
+          alert('Failed to update lead: ' + (data.error || 'Error'));
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+  };
+
   // FEATURE: Bulk Multi-Select & Batch Actions Handlers
   const toggleSelectLead = (id) => {
     setSelectedLeadIds(prev =>
@@ -1074,6 +1157,8 @@ export default function Home() {
     setFormData({
       company: lead.company || '', city: lead.city || '', locations: lead.locations || '',
       founder: lead.founder || '', linkedin: lead.linkedin || '', contact: lead.contact || '',
+      alternate_contact: lead.alternate_contact || '', needs_new_number: lead.needs_new_number || false,
+      number_status: lead.number_status || (lead.needs_new_number ? 'needs_number' : 'valid'),
       email: lead.email || '', pain_point: lead.pain_point || '', source: lead.source || 'Direct',
       date_added: normalizeToIndianDate(lead.date_added) || getTodayIndianStr(),
       assigned_to: lead.assigned_to || 'Sales Team', status: lead.status || 'New',
@@ -1279,6 +1364,12 @@ export default function Home() {
                   <span>Overdue Follow-ups</span>
                 </button>
 
+                <button className={`nav-item ${currentTab === 'needs_new_number' ? 'active' : ''}`} onClick={() => { setCurrentTab('needs_new_number'); setMobileMenuOpen(false); }}>
+                  <i className="fa-solid fa-phone-slash" style={{ color: '#ef4444' }}></i>
+                  <span>Needs New Number</span>
+                  <span className="badge" style={{ background: 'rgba(239, 68, 68, 0.15)', color: '#dc2626' }}>{kpis.needsNewNumberCount || 0}</span>
+                </button>
+
                 <button className="nav-item" onClick={() => { setRemindersDrawerOpen(true); setMobileMenuOpen(false); }}>
                   <i className="fa-solid fa-bell" style={{ color: '#f59e0b' }}></i>
                   <span>My Reminders ({(reminders || []).filter(r => r && r.status === 'pending').length})</span>
@@ -1476,6 +1567,10 @@ export default function Home() {
                 <i className="fa-solid fa-triangle-exclamation"></i> Overdue Follow-ups ({kpis.overdueCount || 0})
               </button>
 
+              <button className={`pill-overdue ${currentTab === 'needs_new_number' ? 'active' : ''}`} onClick={() => setCurrentTab('needs_new_number')} style={{ cursor: 'pointer', border: 'none', background: 'rgba(239, 68, 68, 0.15)', color: '#dc2626' }}>
+                <i className="fa-solid fa-phone-slash"></i> Needs New Number ({kpis.needsNewNumberCount || 0})
+              </button>
+
               {filterDate && (
                 <span className="pill-upcoming">
                   <i className="fa-solid fa-calendar"></i> Filtered: {filterDate}
@@ -1511,6 +1606,20 @@ export default function Home() {
                 <span className="kpi-title">Follow-ups Scheduled</span>
                 <h3>{kpis.followupsCount}</h3>
                 <span className="kpi-sub">Pending Action</span>
+              </div>
+            </div>
+
+            <div 
+              className={`kpi-card glass ${currentTab === 'needs_new_number' ? 'active-kpi' : ''}`} 
+              onClick={() => setCurrentTab('needs_new_number')} 
+              style={{ cursor: 'pointer', transition: 'all 0.2s ease' }}
+              title="Click to view Leads Requiring New Phone Numbers"
+            >
+              <div className="kpi-icon" style={{ background: '#fef3c7', color: '#d97706' }}><i className="fa-solid fa-phone-slash"></i></div>
+              <div className="kpi-data">
+                <span className="kpi-title">Needs New Number</span>
+                <h3 style={{ color: '#d97706' }}>{kpis.needsNewNumberCount || 0}</h3>
+                <span className="kpi-sub">Number Not Connecting</span>
               </div>
             </div>
 
@@ -1699,6 +1808,16 @@ export default function Home() {
                                         ))}
                                       </div>
                                     )}
+                                    {(lead.needs_new_number || lead.number_status === 'needs_number') && (
+                                       <span style={{ background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.25)', color: '#dc2626', fontSize: '10px', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                         <i className="fa-solid fa-phone-slash"></i> Needs New Number
+                                       </span>
+                                     )}
+                                     {lead.alternate_contact && (
+                                       <span style={{ color: '#0284c7', fontSize: '11px', fontWeight: 700, display: 'block', marginTop: '2px' }}>
+                                         <i className="fa-solid fa-phone-volume"></i> Alt: {lead.alternate_contact}
+                                       </span>
+                                     )}
                                   </div>
                                 </td>
                                 <td>
@@ -1783,6 +1902,19 @@ export default function Home() {
                                     {/* 1-Click Reschedule Action Button */}
                                     <button className="icon-btn" onClick={() => openRescheduleModal(lead)} title="Reschedule Follow-up in 1 Click">
                                       <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i>
+                                    </button>
+                                    {/* Toggle Needs New Number Button */}
+                                    <button
+                                      className="icon-btn"
+                                      style={{
+                                        color: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#dc2626' : '#d97706',
+                                        borderColor: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#fca5a5' : '#fde68a',
+                                        background: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#fee2e2' : '#fffbeb'
+                                      }}
+                                      onClick={() => handleToggleNeedsNewNumber(lead)}
+                                      title={(lead.needs_new_number || lead.number_status === 'needs_number') ? "New Number Found / Clear Flag" : "Flag Lead: Needs New Phone Number"}
+                                    >
+                                      <i className="fa-solid fa-phone-slash"></i>
                                     </button>
                                     {/* View Notes & Audit History Button */}
                                     <button className="icon-btn" style={{ color: '#6366f1', borderColor: '#c7d2fe', background: darkMode ? '#1e293b' : '#e0e7ff' }} onClick={() => openNotesModal(lead.company, lead.pain_point || lead.notes || '', lead.activity_log || [], lead, 'notes')} title="View Notes & Audit Version History">
@@ -2537,6 +2669,21 @@ export default function Home() {
                     <input type="text" value={formData.contact} onChange={(e) => setFormData({ ...formData, contact: e.target.value })} />
                   </div>
                   <div className="form-group">
+                    <label>Alternate / New Contact Phone</label>
+                    <input type="text" placeholder="e.g. Newly found number" value={formData.alternate_contact || ''} onChange={(e) => setFormData({ ...formData, alternate_contact: e.target.value })} />
+                  </div>
+                  <div className="form-group full-width" style={{ marginTop: '4px', background: darkMode ? '#1e293b' : '#fffbeb', padding: '10px 14px', borderRadius: '8px', border: '1px solid #fde68a' }}>
+                    <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', fontWeight: 700, color: '#d97706', margin: 0 }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.needs_new_number || false}
+                        onChange={(e) => setFormData({ ...formData, needs_new_number: e.target.checked, number_status: e.target.checked ? 'needs_number' : 'valid' })}
+                        style={{ width: '18px', height: '18px', accentColor: '#d97706', cursor: 'pointer' }}
+                      />
+                      <span>🔍 Flag Lead: Needs New Phone Number (Old Number Not Connecting / Invalid)</span>
+                    </label>
+                  </div>
+                  <div className="form-group">
                     <label>Email Address</label>
                     <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
                   </div>
@@ -2682,6 +2829,17 @@ export default function Home() {
                 Apply Date
               </button>
             </div>
+
+            {/* Batch Flag Needs New Number */}
+            <button
+              className="btn btn-outline"
+              style={{ padding: '6px 12px', fontSize: '11px', color: '#d97706', borderColor: '#fde68a', background: '#fffbeb' }}
+              disabled={bulkExecuting}
+              onClick={() => handleExecuteBulkAction('flag_needs_number')}
+              title="Flag all selected leads as needing a new phone number"
+            >
+              <i className="fa-solid fa-phone-slash"></i> Flag Needs New Number
+            </button>
 
             {/* Batch Delete */}
             <button

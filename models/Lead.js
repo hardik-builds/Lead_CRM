@@ -29,6 +29,9 @@ const LeadSchema = new mongoose.Schema({
   new_status: { type: String, default: '' },
   next_action: { type: String, default: '' },
   follow_up_dates: { type: String, default: '' },
+  needs_new_number: { type: Boolean, default: false },
+  number_status: { type: String, default: 'valid' },
+  alternate_contact: { type: String, default: '' },
   activity_log: [ActivityLogSchema]
 }, { timestamps: true });
 

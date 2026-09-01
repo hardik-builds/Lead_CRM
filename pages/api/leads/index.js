@@ -187,6 +187,8 @@ export default async function handler(req, res) {
         });
       } else if (tab === 'reachout') {
         filtered = allLeads.filter(l => l.reachout_date && l.reachout_date.trim() !== '');
+      } else if (tab === 'needs_new_number') {
+        filtered = allLeads.filter(l => l.needs_new_number === true || l.number_status === 'needs_number' || (l.notes && (l.notes.toLowerCase().includes('wrong number') || l.notes.toLowerCase().includes('not working') || l.notes.toLowerCase().includes('switched off') || l.notes.toLowerCase().includes('find number'))));
       }
 
       let todayCount = 0;
@@ -211,6 +213,7 @@ export default async function handler(req, res) {
       const newLeadsCount = allLeads.filter(l => getCategory(l) === 'new').length;
       const followupsCount = allLeads.filter(l => getCategory(l) === 'followups').length;
       const contactedCount = followupsCount;
+      const needsNewNumberCount = allLeads.filter(l => l.needs_new_number === true || l.number_status === 'needs_number' || (l.notes && (l.notes.toLowerCase().includes('wrong number') || l.notes.toLowerCase().includes('not working') || l.notes.toLowerCase().includes('switched off') || l.notes.toLowerCase().includes('find number')))).length;
 
       const responsePayload = {
         success: true,
@@ -227,7 +230,8 @@ export default async function handler(req, res) {
           contactedCount,
           newLeadsCount,
           todayCount,
-          overdueCount
+          overdueCount,
+          needsNewNumberCount
         }
       };
 

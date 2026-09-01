@@ -69,6 +69,21 @@ export default async function handler(req, res) {
             }
           }
         );
+      } else if (action === 'flag_needs_number') {
+        await Lead.updateMany(
+          { _id: { $in: leadIds } },
+          {
+            $set: { needs_new_number: true, number_status: 'needs_number' },
+            $push: {
+              activity_log: {
+                timestamp: new Date(),
+                action: 'Bulk Flagged: Needs New Number',
+                details: 'Flagged as needing new phone number via Bulk Actions',
+                performedBy: 'Sales Team'
+              }
+            }
+          }
+        );
       } else if (action === 'delete') {
         await Lead.deleteMany({ _id: { $in: leadIds } });
       } else {
