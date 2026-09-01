@@ -683,6 +683,7 @@ export default function Home() {
           body: JSON.stringify({
             needs_new_number: true,
             number_status: 'needs_number',
+            alternate_contact: '', // Wipe out any alternate contact when flagging for a new number
             activity_log: [
               ...(lead.activity_log || []),
               {
@@ -728,8 +729,12 @@ export default function Home() {
         number_status: newNum.trim() ? 'found' : 'valid'
       };
       if (newNum.trim()) {
-        updatedFields.contact = `${lead.contact ? lead.contact + ' / ' : ''}${newNum.trim()}`;
+        updatedFields.contact = `${lead.contact ? lead.contact.split(' / ')[0].trim() + ' / ' : ''}${newNum.trim()}`;
         updatedFields.alternate_contact = newNum.trim();
+      } else {
+        // Redo / Unflag without a new number: wipe alternate contact and restore clean primary contact
+        updatedFields.alternate_contact = '';
+        updatedFields.contact = lead.contact ? lead.contact.split(' / ')[0].trim() : '';
       }
 
       try {
@@ -2004,7 +2009,7 @@ export default function Home() {
                                          <i className="fa-solid fa-circle-check"></i> New Number Found
                                        </span>
                                      )}
-                                     {lead.alternate_contact && (
+                                     {lead.alternate_contact && !lead.needs_new_number && lead.number_status !== 'needs_number' && (
                                        <span style={{ color: '#0284c7', fontSize: '11px', fontWeight: 700, display: 'block', marginTop: '2px' }}>
                                          <i className="fa-solid fa-phone-volume"></i> Alt: {lead.alternate_contact}
                                        </span>
@@ -2200,11 +2205,11 @@ export default function Home() {
                                       </span>
                                     </div>
                                   )}
-                                  {lead.alternate_contact && (
-                                    <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>
-                                      <i className="fa-solid fa-phone-volume"></i> Alt: {lead.alternate_contact}
-                                    </div>
-                                  )}
+                                  {lead.alternate_contact && !lead.needs_new_number && lead.number_status !== 'needs_number' && (
+                                     <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>
+                                       <i className="fa-solid fa-phone-volume"></i> Alt: {lead.alternate_contact}
+                                     </div>
+                                   )}
                                 </div>
                               </div>
                               <div className="mobile-lead-card-row">
