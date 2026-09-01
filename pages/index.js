@@ -1982,7 +1982,21 @@ export default function Home() {
                             <div className="mobile-lead-card-body">
                               <div className="mobile-lead-card-row">
                                 <span className="label">Founder / Contact:</span>
-                                <strong>{lead.founder || 'N/A'} ({lead.contact || 'N/A'})</strong>
+                                <div style={{ textAlign: 'right' }}>
+                                  <strong>{lead.founder || 'N/A'} ({lead.contact || 'N/A'})</strong>
+                                  {(lead.needs_new_number || lead.number_status === 'needs_number') && (
+                                    <div style={{ marginTop: '2px' }}>
+                                      <span style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#dc2626', fontSize: '10px', padding: '2px 7px', borderRadius: '5px', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                        <i className="fa-solid fa-phone-slash"></i> Needs New Number
+                                      </span>
+                                    </div>
+                                  )}
+                                  {lead.alternate_contact && (
+                                    <div style={{ fontSize: '11px', color: '#0284c7', fontWeight: 700, marginTop: '2px' }}>
+                                      <i className="fa-solid fa-phone-volume"></i> Alt: {lead.alternate_contact}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                               <div className="mobile-lead-card-row">
                                 <span className="label">Status:</span>
@@ -2033,6 +2047,21 @@ export default function Home() {
                               </button>
                               <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openRescheduleModal(lead)}>
                                 <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i> Reschedule
+                              </button>
+                              <button
+                                className="btn btn-outline"
+                                style={{
+                                  padding: '8px 12px',
+                                  fontSize: '12px',
+                                  justifyContent: 'center',
+                                  color: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#dc2626' : '#d97706',
+                                  borderColor: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#fca5a5' : '#fde68a',
+                                  background: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#fee2e2' : '#fffbeb'
+                                }}
+                                onClick={() => handleToggleNeedsNewNumber(lead)}
+                                title={(lead.needs_new_number || lead.number_status === 'needs_number') ? "New Number Found / Clear Flag" : "Flag Lead: Needs New Phone Number"}
+                              >
+                                <i className="fa-solid fa-phone-slash"></i>
                               </button>
                               <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#6366f1', borderColor: '#c7d2fe' }} onClick={() => openNotesModal(lead.company, notesText, lead.activity_log || [], lead, 'notes')} title="View Notes & History">
                                 <i className="fa-solid fa-clock-rotate-left"></i>
