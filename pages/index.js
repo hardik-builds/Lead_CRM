@@ -835,12 +835,15 @@ export default function Home() {
   // FEATURE: Redo / Revert accidental "New Number Found" update back to "Needs New Number"
   const handleRedoToNeedsNumber = async (lead) => {
     const leadId = lead._id || lead.id;
-    if (!confirm(`Revert "${lead.company}" back to "Needs New Number" stage?`)) return;
+    if (!confirm(`Revert "${lead.company}" back to "Needs New Number" stage?\n\nThis will clear the newly added alternate phone number (${lead.alternate_contact || 'N/A'}).`)) return;
 
     const prevNeedsNewNumber = lead.needs_new_number || false;
     const prevNumberStatus = lead.number_status || 'valid';
     const prevContact = lead.contact || '';
     const prevAlternateContact = lead.alternate_contact || '';
+
+    // Revert contact by stripping the appended alternate number if present
+    const cleanedContact = lead.contact ? lead.contact.split(' / ')[0].trim() : '';
 
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
@@ -849,12 +852,14 @@ export default function Home() {
         body: JSON.stringify({
           needs_new_number: true,
           number_status: 'needs_number',
+          alternate_contact: '', // Wipe out mistakenly entered alternate number
+          contact: cleanedContact || lead.contact, // Restore original primary contact
           activity_log: [
             ...(lead.activity_log || []),
             {
               timestamp: new Date(),
               action: 'Redo: Reverted to Needs New Number',
-              details: 'Accidental update undone. Reverted back to Needs New Number stage.',
+              details: `Accidental "New Number Found" update undone. Wiped alternate contact '${lead.alternate_contact || ''}' and reverted back to Needs New Number stage.`,
               performedBy: loggedInUserEmail || 'Sales Team'
             }
           ]
@@ -868,7 +873,7 @@ export default function Home() {
           type: 'number_action',
           leadId,
           company: lead.company,
-          message: `Reverted "${lead.company}" back to Needs New Number.`,
+          message: `Reverted "${lead.company}" back to Needs New Number & cleared newly added phone number.`,
           prevNeedsNewNumber,
           prevNumberStatus,
           prevContact,
