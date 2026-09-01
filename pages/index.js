@@ -497,8 +497,10 @@ export default function Home() {
 
       if (data.success) {
         setUndoToast({
+          type: 'followup_completed',
           leadId,
           company: companyName,
+          message: `Marked ${companyName} as Completed.`,
           prevStatus,
           prevFollowUpDate,
           timestamp: Date.now()
@@ -518,27 +520,37 @@ export default function Home() {
     }
   };
 
-  // FEATURE: Undo / Revert Accidental Follow-up Completion Handler
-  const handleUndoFollowedUp = async (toastObj) => {
+  // FEATURE: Universal Undo / Redo Toast Handler (Follow-ups, Needs New Number, New Number Found)
+  const handleGeneralUndo = async (toastObj) => {
     if (!toastObj) return;
     try {
       const currentLead = leads.find(l => (l._id || l.id) === toastObj.leadId);
+      const updatePayload = {
+        activity_log: [
+          ...((currentLead && currentLead.activity_log) || []),
+          {
+            timestamp: new Date(),
+            action: 'Action Undone (Redo / Revert)',
+            details: `Accidental action undone via 1-click Undo Toast. Reverted back to previous state.`,
+            performedBy: loggedInUserEmail || 'Sales Team'
+          }
+        ]
+      };
+
+      if (toastObj.type === 'followup_completed') {
+        updatePayload.status = toastObj.prevStatus;
+        updatePayload.follow_up_dates = toastObj.prevFollowUpDate;
+      } else if (toastObj.type === 'number_action') {
+        updatePayload.needs_new_number = toastObj.prevNeedsNewNumber;
+        updatePayload.number_status = toastObj.prevNumberStatus;
+        updatePayload.contact = toastObj.prevContact;
+        updatePayload.alternate_contact = toastObj.prevAlternateContact;
+      }
+
       const res = await fetch(`/api/leads/${toastObj.leadId}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          status: toastObj.prevStatus,
-          follow_up_dates: toastObj.prevFollowUpDate,
-          activity_log: [
-            ...((currentLead && currentLead.activity_log) || []),
-            {
-              timestamp: new Date(),
-              action: 'Follow-up Reverted (Undo)',
-              details: `Accidental completion undone. Restored Status: "${toastObj.prevStatus}", Follow-up Date: "${toastObj.prevFollowUpDate || 'None'}".`,
-              performedBy: loggedInUserEmail || 'Sales Team'
-            }
-          ]
-        })
+        body: JSON.stringify(updatePayload)
       });
       const data = await res.json();
       if (handleAuthError(data)) return;
@@ -548,7 +560,7 @@ export default function Home() {
         fetchLeads();
         fetchNotifications();
       } else {
-        alert('Failed to revert follow-up: ' + (data.error || 'Error'));
+        alert('Failed to revert action: ' + (data.error || 'Error'));
       }
     } catch (err) {
       alert('Revert error: ' + err.message);
@@ -655,6 +667,11 @@ export default function Home() {
     const isCurrentlyFlagged = lead.needs_new_number || lead.number_status === 'needs_number';
     const leadId = lead._id || lead.id;
 
+    const prevNeedsNewNumber = lead.needs_new_number || false;
+    const prevNumberStatus = lead.number_status || 'valid';
+    const prevContact = lead.contact || '';
+    const prevAlternateContact = lead.alternate_contact || '';
+
     if (!isCurrentlyFlagged) {
       if (!confirm(`Flag "${lead.company}" as "Needs New Number"?\n\nOld phone number (${lead.contact || 'N/A'}) is not connecting / invalid.`)) {
         return;
@@ -680,8 +697,22 @@ export default function Home() {
         const data = await res.json();
         if (handleAuthError(data)) return;
         if (data.success) {
+          setUndoToast({
+            type: 'number_action',
+            leadId,
+            company: lead.company,
+            message: `Flagged "${lead.company}" as Needs New Number.`,
+            prevNeedsNewNumber,
+            prevNumberStatus,
+            prevContact,
+            prevAlternateContact,
+            timestamp: Date.now()
+          });
           fetchLeads();
           fetchNotifications();
+          setTimeout(() => {
+            setUndoToast(prev => (prev && prev.leadId === leadId ? null : prev));
+          }, 12000);
         } else {
           alert('Failed to flag lead: ' + (data.error || 'Error'));
         }
@@ -689,7 +720,7 @@ export default function Home() {
         alert('Error: ' + err.message);
       }
     } else {
-      const newNum = prompt(`New number found for "${lead.company}"?\n\nEnter new phone number to update contact (or leave blank to just clear flag):`, lead.alternate_contact || '');
+      const newNum = prompt(`Action for "${lead.company}":\n\n- Enter NEW phone number to save & move to "New Number Found" section.\n- Leave BLANK to unflag & REDO / revert back to active pipeline:`, lead.alternate_contact || '');
       if (newNum === null) return;
 
       const updatedFields = {
@@ -711,7 +742,7 @@ export default function Home() {
               ...(lead.activity_log || []),
               {
                 timestamp: new Date(),
-                action: newNum.trim() ? 'New Phone Number Updated' : 'Needs New Number Flag Cleared',
+                action: newNum.trim() ? 'New Phone Number Updated' : 'Needs New Number Flag Cleared (Redo)',
                 details: newNum.trim() ? `Updated contact with new phone number: '${newNum.trim()}'.` : 'Cleared "Needs New Number" flag.',
                 performedBy: loggedInUserEmail || 'Sales Team'
               }
@@ -721,9 +752,22 @@ export default function Home() {
         const data = await res.json();
         if (handleAuthError(data)) return;
         if (data.success) {
-          alert(newNum.trim() ? `Successfully updated new number for "${lead.company}"! Moved to "New Number Found" section.` : `Cleared flag for "${lead.company}".`);
+          setUndoToast({
+            type: 'number_action',
+            leadId,
+            company: lead.company,
+            message: newNum.trim() ? `Saved new number for "${lead.company}".` : `Cleared flag for "${lead.company}".`,
+            prevNeedsNewNumber,
+            prevNumberStatus,
+            prevContact,
+            prevAlternateContact,
+            timestamp: Date.now()
+          });
           fetchLeads();
           fetchNotifications();
+          setTimeout(() => {
+            setUndoToast(prev => (prev && prev.leadId === leadId ? null : prev));
+          }, 12000);
         } else {
           alert('Failed to update lead: ' + (data.error || 'Error'));
         }
@@ -737,6 +781,11 @@ export default function Home() {
   const handleResumePipeline = async (lead) => {
     const leadId = lead._id || lead.id;
     if (!confirm(`Move "${lead.company}" back to standard Active Pipeline?`)) return;
+
+    const prevNeedsNewNumber = lead.needs_new_number || false;
+    const prevNumberStatus = lead.number_status || 'valid';
+    const prevContact = lead.contact || '';
+    const prevAlternateContact = lead.alternate_contact || '';
 
     try {
       const res = await fetch(`/api/leads/${leadId}`, {
@@ -759,9 +808,78 @@ export default function Home() {
       const data = await res.json();
       if (handleAuthError(data)) return;
       if (data.success) {
-        alert(`"${lead.company}" moved back to standard active pipeline!`);
+        setUndoToast({
+          type: 'number_action',
+          leadId,
+          company: lead.company,
+          message: `Moved "${lead.company}" back to Active Pipeline.`,
+          prevNeedsNewNumber,
+          prevNumberStatus,
+          prevContact,
+          prevAlternateContact,
+          timestamp: Date.now()
+        });
         fetchLeads();
         fetchNotifications();
+        setTimeout(() => {
+          setUndoToast(prev => (prev && prev.leadId === leadId ? null : prev));
+        }, 12000);
+      } else {
+        alert('Failed: ' + (data.error || 'Error'));
+      }
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  };
+
+  // FEATURE: Redo / Revert accidental "New Number Found" update back to "Needs New Number"
+  const handleRedoToNeedsNumber = async (lead) => {
+    const leadId = lead._id || lead.id;
+    if (!confirm(`Revert "${lead.company}" back to "Needs New Number" stage?`)) return;
+
+    const prevNeedsNewNumber = lead.needs_new_number || false;
+    const prevNumberStatus = lead.number_status || 'valid';
+    const prevContact = lead.contact || '';
+    const prevAlternateContact = lead.alternate_contact || '';
+
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          needs_new_number: true,
+          number_status: 'needs_number',
+          activity_log: [
+            ...(lead.activity_log || []),
+            {
+              timestamp: new Date(),
+              action: 'Redo: Reverted to Needs New Number',
+              details: 'Accidental update undone. Reverted back to Needs New Number stage.',
+              performedBy: loggedInUserEmail || 'Sales Team'
+            }
+          ]
+        })
+      });
+      const data = await res.json();
+      if (handleAuthError(data)) return;
+
+      if (data.success) {
+        setUndoToast({
+          type: 'number_action',
+          leadId,
+          company: lead.company,
+          message: `Reverted "${lead.company}" back to Needs New Number.`,
+          prevNeedsNewNumber,
+          prevNumberStatus,
+          prevContact,
+          prevAlternateContact,
+          timestamp: Date.now()
+        });
+        fetchLeads();
+        fetchNotifications();
+        setTimeout(() => {
+          setUndoToast(prev => (prev && prev.leadId === leadId ? null : prev));
+        }, 12000);
       } else {
         alert('Failed: ' + (data.error || 'Error'));
       }
@@ -1986,9 +2104,14 @@ export default function Home() {
                                     </button>
                                     {/* Move Back to Active Pipeline (Resume Follow-ups) */}
                                     {(lead.number_status === 'found' || lead.number_status === 'new_number_found') && (
-                                      <button className="icon-btn" style={{ color: '#059669', borderColor: '#6ee7b7', background: '#ecfdf5' }} onClick={() => handleResumePipeline(lead)} title="Move Lead Back to Standard Active Follow-up Pipeline">
-                                        <i className="fa-solid fa-play"></i>
-                                      </button>
+                                      <>
+                                        <button className="icon-btn" style={{ color: '#059669', borderColor: '#6ee7b7', background: '#ecfdf5' }} onClick={() => handleResumePipeline(lead)} title="Move Lead Back to Standard Active Follow-up Pipeline">
+                                          <i className="fa-solid fa-play"></i>
+                                        </button>
+                                        <button className="icon-btn" style={{ color: '#dc2626', borderColor: '#fca5a5', background: '#fee2e2' }} onClick={() => handleRedoToNeedsNumber(lead)} title="Redo / Revert back to Needs New Number stage">
+                                          <i className="fa-solid fa-rotate-left"></i>
+                                        </button>
+                                      </>
                                     )}
                                     {/* View Notes & Audit History Button */}
                                     <button className="icon-btn" style={{ color: '#6366f1', borderColor: '#c7d2fe', background: darkMode ? '#1e293b' : '#e0e7ff' }} onClick={() => openNotesModal(lead.company, lead.pain_point || lead.notes || '', lead.activity_log || [], lead, 'notes')} title="View Notes & Audit Version History">
@@ -2130,9 +2253,14 @@ export default function Home() {
                                 <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i> Reschedule
                               </button>
                               {(lead.number_status === 'found' || lead.number_status === 'new_number_found') && (
-                                <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#059669', borderColor: '#6ee7b7', background: '#ecfdf5' }} onClick={() => handleResumePipeline(lead)} title="Move Lead Back to Active Pipeline">
-                                  <i className="fa-solid fa-play"></i> Resume
-                                </button>
+                                <>
+                                  <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#059669', borderColor: '#6ee7b7', background: '#ecfdf5' }} onClick={() => handleResumePipeline(lead)} title="Move Lead Back to Active Pipeline">
+                                    <i className="fa-solid fa-play"></i> Resume
+                                  </button>
+                                  <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#dc2626', borderColor: '#fca5a5', background: '#fee2e2' }} onClick={() => handleRedoToNeedsNumber(lead)} title="Redo / Revert back to Needs New Number stage">
+                                    <i className="fa-solid fa-rotate-left"></i> Redo
+                                  </button>
+                                </>
                               )}
                               <button
                                 className="btn btn-outline"
@@ -2997,13 +3125,13 @@ export default function Home() {
               animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
             }}
           >
-            <i className="fa-solid fa-circle-check" style={{ color: '#10b981', fontSize: '18px' }}></i>
+            <i className="fa-solid fa-circle-info" style={{ color: '#6366f1', fontSize: '18px' }}></i>
             <div style={{ fontSize: '13px', fontWeight: 600 }}>
-              Marked <strong>{undoToast.company}</strong> as Completed.
+              {undoToast.message || `Action completed for ${undoToast.company}`}
             </div>
             <button
               type="button"
-              onClick={() => handleUndoFollowedUp(undoToast)}
+              onClick={() => handleGeneralUndo(undoToast)}
               style={{
                 background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
                 color: '#ffffff',
