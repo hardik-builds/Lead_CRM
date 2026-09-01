@@ -1832,6 +1832,23 @@ body.dark-mode .sidebar-section-header {
     display: flex;
   }
 
+  .action-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .icon-btn {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    font-size: 14px;
+    border-radius: 9px;
+    flex-shrink: 0;
+  }
+
   .pie-chart-wrapper {
     flex-direction: column;
   }

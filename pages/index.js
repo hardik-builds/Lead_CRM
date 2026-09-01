@@ -2245,29 +2245,19 @@ export default function Home() {
                               )}
                             </div>
 
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', alignItems: 'center' }}>
-                              <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center', color: '#10b981', borderColor: '#a7f3d0' }} onClick={() => handleMarkFollowedUp(lead)}>
-                                <i className="fa-solid fa-circle-check"></i> Done
+                            <div className="action-btns" style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+                              {/* Mark Follow-up Complete Button */}
+                              <button className="icon-btn" style={{ color: '#10b981', borderColor: '#a7f3d0', background: '#ecfdf5' }} onClick={() => handleMarkFollowedUp(lead)} title="Mark Follow-up Completed">
+                                <i className="fa-solid fa-circle-check"></i>
                               </button>
-                              <button className="btn btn-outline" style={{ flex: 1, padding: '8px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openRescheduleModal(lead)}>
-                                <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i> Reschedule
+                              {/* 1-Click Reschedule Action Button */}
+                              <button className="icon-btn" onClick={() => openRescheduleModal(lead)} title="Reschedule Follow-up in 1 Click">
+                                <i className="fa-solid fa-calendar-plus" style={{ color: '#4f46e5' }}></i>
                               </button>
-                              {(lead.number_status === 'found' || lead.number_status === 'new_number_found') && (
-                                <>
-                                  <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#059669', borderColor: '#6ee7b7', background: '#ecfdf5' }} onClick={() => handleResumePipeline(lead)} title="Move Lead Back to Active Pipeline">
-                                    <i className="fa-solid fa-play"></i> Resume
-                                  </button>
-                                  <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#dc2626', borderColor: '#fca5a5', background: '#fee2e2' }} onClick={() => handleRedoToNeedsNumber(lead)} title="Redo / Revert back to Needs New Number stage">
-                                    <i className="fa-solid fa-rotate-left"></i> Redo
-                                  </button>
-                                </>
-                              )}
+                              {/* Toggle Needs New Number Button */}
                               <button
-                                className="btn btn-outline"
+                                className="icon-btn"
                                 style={{
-                                  padding: '8px 12px',
-                                  fontSize: '12px',
-                                  justifyContent: 'center',
                                   color: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#dc2626' : '#d97706',
                                   borderColor: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#fca5a5' : '#fde68a',
                                   background: (lead.needs_new_number || lead.number_status === 'needs_number') ? '#fee2e2' : '#fffbeb'
@@ -2277,33 +2267,54 @@ export default function Home() {
                               >
                                 <i className="fa-solid fa-phone-slash"></i>
                               </button>
-                              <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#6366f1', borderColor: '#c7d2fe' }} onClick={() => openNotesModal(lead.company, notesText, lead.activity_log || [], lead, 'notes')} title="View Notes & History">
+                              {/* Move Back to Active Pipeline & Redo Buttons for New Number Found */}
+                              {(lead.number_status === 'found' || lead.number_status === 'new_number_found') && (
+                                <>
+                                  <button className="icon-btn" style={{ color: '#059669', borderColor: '#6ee7b7', background: '#ecfdf5' }} onClick={() => handleResumePipeline(lead)} title="Move Lead Back to Standard Active Follow-up Pipeline">
+                                    <i className="fa-solid fa-play"></i>
+                                  </button>
+                                  <button className="icon-btn" style={{ color: '#dc2626', borderColor: '#fca5a5', background: '#fee2e2' }} onClick={() => handleRedoToNeedsNumber(lead)} title="Redo / Revert back to Needs New Number stage">
+                                    <i className="fa-solid fa-rotate-left"></i>
+                                  </button>
+                                </>
+                              )}
+                              {/* View Notes & Audit History Button */}
+                              <button className="icon-btn" style={{ color: '#6366f1', borderColor: '#c7d2fe', background: darkMode ? '#1e293b' : '#e0e7ff' }} onClick={() => openNotesModal(lead.company, notesText, lead.activity_log || [], lead, 'notes')} title="View Notes & Audit Version History">
                                 <i className="fa-solid fa-clock-rotate-left"></i>
                               </button>
-                              <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#f59e0b', borderColor: '#fde68a', background: darkMode ? '#1c2436' : '#fffbeb' }} onClick={() => openReminderModal(lead)} title="Set Email Reminder">
+                              {/* Restore Lead to Previous State Button */}
+                              <button className="icon-btn" style={{ color: '#8b5cf6', borderColor: '#ddd6fe', background: darkMode ? '#1e293b' : '#f3e8ff' }} onClick={() => handleRestoreLeadFromHistory(lead)} title="Restore / Revert Previous Follow-up Date & Status">
+                                <i className="fa-solid fa-rotate-left"></i>
+                              </button>
+                              {/* Set Reminder Button */}
+                              <button className="icon-btn" onClick={() => openReminderModal(lead)} title="Set Email Reminder" style={{ color: '#f59e0b', borderColor: '#fde68a', background: '#fffbeb' }}>
                                 <i className="fa-solid fa-bell"></i>
                               </button>
-                              <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center' }} onClick={() => openEdit(lead)}>
+                              {/* Edit Lead Button */}
+                              <button className="icon-btn" onClick={() => openEdit(lead)} title="Edit Lead">
                                 <i className="fa-solid fa-pen-to-square"></i>
                               </button>
+                              {/* Send Email Button */}
                               {lead.email && (
-                                <a href={`mailto:${lead.email}`} className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', textDecoration: 'none' }} title="Send Email">
+                                <a href={`mailto:${lead.email}`} className="icon-btn" title="Send Email" style={{ textDecoration: 'none' }}>
                                   <i className="fa-solid fa-envelope"></i>
                                 </a>
                               )}
+                              {/* Chat on WhatsApp Button */}
                               {getWhatsAppUrl(lead.contact, lead.founder, lead.company) && (
                                 <a
                                   href={getWhatsAppUrl(lead.contact, lead.founder, lead.company)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="btn btn-outline"
-                                  style={{ padding: '8px 12px', fontSize: '12px', justifyContent: 'center', color: '#15803d', borderColor: '#86efac', background: '#f0fdf4', textDecoration: 'none' }}
+                                  className="icon-btn"
+                                  style={{ color: '#25D366', borderColor: '#86efac', background: '#f0fdf4', textDecoration: 'none' }}
                                   title="Chat on WhatsApp"
                                 >
-                                  <i className="fa-brands fa-whatsapp" style={{ color: '#25D366', fontSize: '16px' }}></i>
+                                  <i className="fa-brands fa-whatsapp" style={{ fontSize: '15px' }}></i>
                                 </a>
                               )}
-                              <button className="btn btn-outline" style={{ padding: '8px 12px', fontSize: '12px', color: '#ef4444', borderColor: '#fca5a5' }} onClick={() => handleDelete(lead._id || lead.id)}>
+                              {/* Delete Lead Button */}
+                              <button className="icon-btn delete-btn" onClick={() => handleDelete(lead._id || lead.id)} title="Delete Lead">
                                 <i className="fa-solid fa-trash"></i>
                               </button>
                             </div>
